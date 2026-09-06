@@ -1,0 +1,2 @@
+[console_scripts]
+paladin = paladin_cli:main

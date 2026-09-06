@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paladin-cli"
+version = "0.1.0"
+description = "Paladin AgentShield — Runtime security for autonomous AI agents"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Paladin Team" }]
+keywords = ["cli", "tui", "security", "ai", "agent", "paladin"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+]
+
+dependencies = [
+    "textual>=0.50.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+paladin = "paladin_cli:main"
+
+[tool.setuptools]
+py-modules = ["paladin_cli", "paladin_tui"]

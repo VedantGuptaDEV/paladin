@@ -1,0 +1,10 @@
+README.md
+paladin_cli.py
+paladin_tui.py
+pyproject.toml
+paladin_cli.egg-info/PKG-INFO
+paladin_cli.egg-info/SOURCES.txt
+paladin_cli.egg-info/dependency_links.txt
+paladin_cli.egg-info/entry_points.txt
+paladin_cli.egg-info/requires.txt
+paladin_cli.egg-info/top_level.txt

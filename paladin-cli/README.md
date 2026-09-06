@@ -1,0 +1,98 @@
+# Paladin CLI
+
+**AgentShield** — Runtime security for autonomous AI agents, in your terminal.
+
+## Quick Start
+
+```bash
+# Install (from the paladin-cli directory)
+pip install -e .
+
+# Launch the TUI
+paladin
+
+# Or run a specific command directly
+paladin status
+paladin approvals
+paladin doctor
+```
+
+## TUI
+
+Running `paladin` with no arguments opens the interactive terminal UI:
+
+- **Shield logo** — large ASCII art shield with dotted 'P' and PALADIN text
+- **Sidebar** — press `s` to toggle; navigate between Session, Dashboard, Approvals, Activity, Policies, Settings
+- **Input box** — at the bottom; type any query or command
+- **Themes** — press `t` to toggle dark/light mode; `q` to quit
+
+### Input box commands
+
+| Command | Description |
+|---|---|
+| `paladin init` | Init config in current directory |
+| `paladin start` | Connect to backend |
+| `paladin status` | Show session status |
+| `paladin run <query>` | Send query to Kiro |
+| `paladin approvals` | Show pending approvals |
+| `paladin approve <id>` | Approve an action |
+| `paladin deny <id>` | Deny an action |
+| `paladin activity` | Show activity log |
+| `paladin activity <id>` | Detail for specific ID |
+| `paladin policy list` | List policies |
+| `paladin policy add` | Add a policy |
+| `paladin policy test` | Test a policy |
+| `paladin config` | Show configuration |
+| `paladin doctor` | Health check |
+| `paladin version` | Version info |
+| `/help` | Show help modal |
+| `/clear` | Clear session log |
+| `/theme` | Toggle theme |
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|---|---|
+| `s` | Toggle sidebar |
+| `t` | Toggle dark/light theme |
+| `q` | Quit |
+| `?` | Show help |
+| `Escape` | Close modal |
+
+## Color Themes
+
+**Dark mode** (default):
+- Background: `#003135`
+- Sidebar: `#024950`
+- Accent: `#0FA4AF`
+- Text: `#AFDDE5`
+- Highlight: `#964734`
+
+**Light mode**:
+- Background: `#B8E3E9`
+- Sidebar: `#B298E7`
+- Accent: `#F5B8D5`
+- Highlight: `#F9BEDD`
+
+## Configuration
+
+`paladin init` creates `.paladin.json` in your project directory:
+
+```json
+{
+  "version": "0.1.0",
+  "api_base": "http://localhost:8000",
+  "auto_block_risk_threshold": 80,
+  "auto_allow_risk_threshold": 20,
+  "policies": []
+}
+```
+
+Set `PALADIN_API_URL` env var to override the API base URL.
+
+## Requirements
+
+- Python 3.8+
+- `textual >= 0.50.0`
+- `rich >= 13.0.0`
+- Kiro CLI (`kiro-cli-chat`, `kiro`, or `kiro-cli` in PATH)
