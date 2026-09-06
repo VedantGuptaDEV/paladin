@@ -6,6 +6,7 @@ import Approvals from "../pages/Approvals/Approvals";
 import Activity from "../pages/Activity/Activity";
 import Policies from "../pages/Policies/Policies";
 import Settings from "../pages/Settings/Settings";
+import PaladinTUI from "../pages/TUI/PaladinTUI";
 
 function Root() {
   return (
@@ -28,6 +29,10 @@ function Root() {
 }
 
 export const router = createBrowserRouter([
+  {
+    path: "/tui",
+    Component: PaladinTUI,
+  },
   {
     path: "/",
     Component: Root,

@@ -1,1127 +1,1065 @@
+# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 """
-paladin_tui.py — Paladin Terminal UI
-A Textual-based TUI for the Paladin AgentShield CLI.
+paladin_tui.py  --  Paladin AgentShield  /  Terminal UI
 """
 
 from __future__ import annotations
 
-import subprocess
-import shutil
-import sys
 import json
+import os
+import shutil
+import subprocess
+import sys
 import urllib.request
-import urllib.error
 from datetime import datetime
 from typing import Optional
 
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.css.query import NoMatches
 from textual.reactive import reactive
-from textual.screen import Screen, ModalScreen
+from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import (
+    Button,
     Footer,
-    Header,
     Input,
-    Label,
     ListItem,
     ListView,
-    Markdown,
     RichLog,
     Static,
-    Button,
-    Rule,
 )
-from textual import events, on, work
 from rich.text import Text
-from rich.console import Console
-from rich.panel import Panel
+from rich.table import Table
+from rich import box
 
-# ─── Constants ────────────────────────────────────────────────────────────────
+# ── constants ──────────────────────────────────────────────────────────────────
 
-API_BASE = "http://localhost:8000"
-KIRO_BIN = shutil.which("kiro-cli-chat") or shutil.which("kiro") or shutil.which("kiro-cli")
-VERSION = "0.1.0"
+VERSION  = "0.1.0"
+API_BASE = os.environ.get("PALADIN_API_URL", "http://localhost:8000")
+KIRO_BIN = (
+    shutil.which("kiro-cli-chat")
+    or shutil.which("kiro")
+    or shutil.which("kiro-cli")
+)
 
-# ─── Shield / Logo ASCII Art ──────────────────────────────────────────────────
+# ── palette (dark) ─────────────────────────────────────────────────────────────
+#  BG       #0d1117   deepest background
+#  PANEL    #161b22   sidebar, input bar, modals
+#  BOOST    #21262d   dividers, hover, borders
+#  ACCENT   #58a6ff   primary highlight
+#  TEXT     #c9d1d9   body text
+#  MUTED    #8b949e   dim text
 
-SHIELD_ART = """\
-      ╭───────────────╮
-     ╱                 ╲
-    │  ·  ·  ·  ·  ·   │
-    │ ·  ██████████  ·  │
-    │  · ██  ·  ██  ·   │
-    │ ·  ██████████  ·  │
-    │  · ██  ·  ·   ·   │
-    │ ·  ██  ·  ·   ·   │
-    │  · ██  ·  ·   ·   │
-    │ ·  ·  ·  ·  ·  ·  │
-    │   ╔═══════════╗   │
-    │   ║  PALADIN  ║   │
-    │   ╚═══════════╝   │
-     ╲                 ╱
-      ╰───────────────╯"""
+# ── api helpers ────────────────────────────────────────────────────────────────
 
-SHIELD_ART_SMALL = """\
-    ╭───────────╮
-   ╱ · · · · · ╲
-  │ · ██████  · │
-  │ · ██  ██  · │
-  │ · ████████· │
-  │ · ██  · · · │
-  │ · ██  · · · │
-  │  PALADIN   │
-   ╲ · · · · · ╱
-    ╰───────────╯"""
+def _get(path: str):
+    req = urllib.request.Request(
+        f"{API_BASE}{path}", headers={"Accept": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return json.loads(r.read().decode())
 
-# The big shield with dotted 'P' in the center
-MAIN_SHIELD = """\
-           ╭─────────────────────────────╮
-          ╱ ·   ·   ·   ·   ·   ·   ·    ╲
-         │  ·   ·   ·   ·   ·   ·   ·   · │
-         │  ·  ██████████  ·  ·   ·   ·  · │
-         │  · ██  ·  ·  ██ ·  ·   ·   ·  · │
-         │  · ██  ·  ·  ██ ·  ·   ·   ·  · │
-         │  · ██████████  ·  ·   ·   ·   · │
-         │  · ██  ·  ·  ·  ·  ·   ·   ·  · │
-         │  · ██  ·  ·  ·  ·  ·   ·   ·  · │
-         │  · ██  ·  ·  ·  ·  ·   ·   ·  · │
-         │  ·  ·  ·  ·  ·  ·  ·   ·   ·  · │
-         │  ·   ·   ·   ·   ·   ·   ·   · │
-         │        ╔═══════════════╗       │
-         │        ║   P A L A D I N ║       │
-         │        ╚═══════════════╝       │
-          ╲  ·   ·   ·   ·   ·   ·   ·  ╱
-           ╰────────────────────────────╯"""
 
-# ─── Utility functions ─────────────────────────────────────────────────────────
+def _post(path: str, data: dict) -> dict:
+    body = json.dumps(data).encode()
+    req = urllib.request.Request(
+        f"{API_BASE}{path}", data=body,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return json.loads(r.read().decode())
 
-def api_get(path: str) -> dict | list:
-    """Make a GET request to the backend API."""
+
+def _fmt_ts(iso: str) -> str:
     try:
-        url = f"{API_BASE}{path}"
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read().decode())
-    except Exception as e:
-        raise RuntimeError(f"API error: {e}") from e
-
-
-def api_post(path: str, data: dict) -> dict:
-    """Make a POST request to the backend API."""
-    try:
-        url = f"{API_BASE}{path}"
-        body = json.dumps(data).encode()
-        req = urllib.request.Request(
-            url, data=body,
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read().decode())
-    except Exception as e:
-        raise RuntimeError(f"API error: {e}") from e
-
-
-def format_timestamp(iso: str) -> str:
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        return dt.strftime("%H:%M:%S")
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).strftime("%H:%M:%S")
     except Exception:
         return iso[:8]
 
 
-# ─── Widgets ──────────────────────────────────────────────────────────────────
+def _risk_style(score) -> str:
+    try:
+        v = int(score)
+    except Exception:
+        return "dim"
+    return "bold red" if v >= 70 else ("yellow" if v >= 40 else "green")
 
-class ShieldLogo(Static):
-    """The main Paladin shield logo with dotted 'P' pattern."""
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  WIDGETS
+# ══════════════════════════════════════════════════════════════════════════════
+
+class Clock(Widget):
+    """Live HH:MM:SS clock in the status bar."""
+
+    _t: reactive[str] = reactive("")
 
     DEFAULT_CSS = """
-    ShieldLogo {
-        width: 100%;
-        content-align: center middle;
-        text-align: center;
-        padding: 1 2;
-        color: #0FA4AF;
+    Clock {
+        width: auto;
+        content-align: right middle;
+        color: #58a6ff;
+        padding: 0 1;
     }
     """
 
+    def on_mount(self) -> None:
+        self._tick()
+        self.set_interval(1, self._tick)
+
+    def _tick(self) -> None:
+        self._t = datetime.now().strftime("%H:%M:%S")
+
+    def watch__t(self, _: str) -> None:
+        self.refresh()
+
     def render(self) -> Text:
-        t = Text(justify="center")
-        lines = MAIN_SHIELD.split("\n")
-        for line in lines:
-            if "PALADIN" in line or "P A L A D I N" in line:
-                t.append(line + "\n", style="bold #AFDDE5")
-            elif "██" in line:
-                t.append(line + "\n", style="dim #0FA4AF")
-            elif "╔" in line or "╚" in line or "║" in line:
-                t.append(line + "\n", style="bold #0FA4AF")
-            else:
-                t.append(line + "\n", style="dim #6fa8b0")
-        return t
+        return Text(f" {self._t} ", style="bold #58a6ff")
 
 
-class SidebarItem(ListItem):
-    """A nav item in the sidebar."""
+class Spinner(Widget):
+    """Braille spinner shown while Kiro is processing."""
 
-    def __init__(self, label: str, icon: str, view_id: str, badge: str = "") -> None:
+    FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    _f: reactive[int] = reactive(0)
+
+    DEFAULT_CSS = """
+    Spinner {
+        width: auto;
+        height: 1;
+        color: #58a6ff;
+        display: none;
+        padding: 0 4;
+    }
+    Spinner.active {
+        display: block;
+    }
+    """
+
+    def on_mount(self) -> None:
+        self.set_interval(0.08, self._step)
+
+    def _step(self) -> None:
+        self._f = (self._f + 1) % len(self.FRAMES)
+
+    def watch__f(self, _: int) -> None:
+        self.refresh()
+
+    def render(self) -> Text:
+        return Text(f"{self.FRAMES[self._f]}  thinking…", style="italic #58a6ff")
+
+    def show(self) -> None:
+        self.add_class("active")
+
+    def hide(self) -> None:
+        self.remove_class("active")
+
+
+# ── nav item ───────────────────────────────────────────────────────────────────
+
+class NavItem(ListItem):
+    def __init__(self, icon: str, label: str, view_id: str) -> None:
         super().__init__()
-        self.label_text = label
-        self.icon = icon
+        self.icon    = icon
+        self._label  = label
         self.view_id = view_id
-        self.badge_text = badge
 
     def compose(self) -> ComposeResult:
-        badge_str = f" [{self.badge_text}]" if self.badge_text else ""
-        yield Static(f"{self.icon}  {self.label_text}{badge_str}", classes="sidebar-item-label")
+        yield Static(f"  {self.icon}  {self._label}", classes="nav-text")
 
+
+# ── sidebar ────────────────────────────────────────────────────────────────────
 
 class Sidebar(Widget):
-    """Collapsible left sidebar with navigation."""
 
     DEFAULT_CSS = """
     Sidebar {
         width: 22;
         height: 100%;
-        background: #024950;
-        border-right: tall #0FA4AF;
-        dock: left;
+        background: #161b22;
+        border-right: tall #21262d;
     }
-    Sidebar .sidebar-header {
-        padding: 1 2;
-        border-bottom: tall #0FA4AF;
-        color: #AFDDE5;
-        text-style: bold;
+    Sidebar .brand {
         height: 5;
+        border-bottom: tall #21262d;
         content-align: center middle;
+        align: center middle;
+        padding: 0 1;
     }
-    Sidebar .sidebar-logo-row {
-        color: #0FA4AF;
+    Sidebar .brand-name {
         text-style: bold;
+        color: #c9d1d9;
+        text-align: center;
     }
-    Sidebar .sidebar-subtitle {
-        color: #6fa8b0;
-        text-style: dim;
+    Sidebar .brand-ver {
+        color: #8b949e;
+        text-align: center;
     }
     Sidebar ListView {
-        background: transparent;
+        background: #161b22;
         border: none;
+        height: 1fr;
         padding: 1 0;
     }
     Sidebar ListItem {
-        background: transparent;
-        padding: 0 1;
+        background: #161b22;
         height: 3;
+        padding: 0;
+        border-bottom: tall #21262d;
     }
     Sidebar ListItem:hover {
-        background: #035560;
+        background: #21262d;
     }
     Sidebar ListItem.--highlight {
-        background: #0FA4AF;
-        color: #003135;
+        border-left: thick #58a6ff;
+        background: #21262d;
     }
-    Sidebar .sidebar-item-label {
-        padding: 0 1;
+    Sidebar .nav-text {
         height: 3;
         content-align: left middle;
-        color: #AFDDE5;
+        color: #8b949e;
+        padding: 0 1;
     }
-    Sidebar ListItem.--highlight .sidebar-item-label {
-        color: #003135;
+    Sidebar ListItem.--highlight .nav-text {
+        color: #58a6ff;
         text-style: bold;
     }
     Sidebar .sidebar-footer {
         dock: bottom;
+        height: 8;
+        border-top: tall #21262d;
         padding: 1 2;
-        border-top: tall #0FA4AF;
-        height: 7;
+        background: #161b22;
     }
-    Sidebar .status-row {
+    Sidebar .health-line {
         height: 1;
-        color: #6fa8b0;
+        color: #8b949e;
     }
-    Sidebar .theme-toggle {
+    Sidebar .theme-btn {
         margin-top: 1;
         height: 3;
-        background: #035560;
-        border: tall #0FA4AF;
-        color: #6fa8b0;
-        content-align: center middle;
+        background: #21262d;
+        border: tall #58a6ff;
+        color: #8b949e;
         width: 100%;
+        content-align: center middle;
+    }
+    Sidebar .theme-btn:hover {
+        color: #58a6ff;
+        background: #161b22;
     }
     """
 
     def compose(self) -> ComposeResult:
-        with Container(classes="sidebar-header"):
-            yield Static("🛡  Paladin", classes="sidebar-logo-row")
-            yield Static("AgentShield v0.1", classes="sidebar-subtitle")
+        with Container(classes="brand"):
+            yield Static("PALADIN", classes="brand-name")
+            yield Static(f"AgentShield  v{VERSION}", classes="brand-ver")
 
-        items = [
-            SidebarItem("Active Session", "◉", "session"),
-            SidebarItem("Dashboard",      "⊞", "dashboard"),
-            SidebarItem("Approvals",      "✓", "approvals"),
-            SidebarItem("Activity",       "≋", "activity"),
-            SidebarItem("Policies",       "⛊", "policies"),
-            SidebarItem("Settings",       "⚙", "settings"),
-        ]
-        lv = ListView(*items, id="sidebar-list")
-        yield lv
+        yield ListView(
+            NavItem("◉", "Session",   "session"),
+            NavItem("▦", "Dashboard", "dashboard"),
+            NavItem("✓", "Approvals", "approvals"),
+            NavItem("≋", "Activity",  "activity"),
+            NavItem("⛊", "Policies",  "policies"),
+            NavItem("⚙", "Settings",  "settings"),
+            id="nav-list",
+        )
 
         with Container(classes="sidebar-footer"):
-            yield Static("● Kiro CLI      [green]ok[/]",       classes="status-row", markup=True)
-            yield Static("● AgentShield   [green]ok[/]",       classes="status-row", markup=True)
-            yield Static("● Protection    [green]on[/]",       classes="status-row", markup=True)
-            yield Button("☀ Toggle Theme", id="theme-toggle-btn", classes="theme-toggle")
+            kiro_icon = "[green]●[/]" if KIRO_BIN else "[red]●[/]"
+            yield Static(f"{kiro_icon} Kiro CLI",     classes="health-line", markup=True)
+            yield Static("[green]●[/] AgentShield",   classes="health-line", markup=True)
+            yield Static("[green]●[/] Protection",    classes="health-line", markup=True)
+            yield Button("  Toggle Theme", id="theme-btn", classes="theme-btn")
 
-    @on(Button.Pressed, "#theme-toggle-btn")
-    def on_theme_toggle(self) -> None:
+    @on(Button.Pressed, "#theme-btn")
+    def _toggle(self) -> None:
         self.app.action_toggle_theme()
 
 
-# ─── Content Views ─────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  CONTENT VIEWS
+# ══════════════════════════════════════════════════════════════════════════════
 
 class SessionView(Widget):
-    """The main session view — shows shield logo and chat output."""
 
     DEFAULT_CSS = """
     SessionView {
         width: 100%;
         height: 100%;
-        background: #003135;
+        background: #0d1117;
+        layout: vertical;
     }
-    SessionView #logo-container {
-        width: 100%;
+    SessionView #welcome {
         height: auto;
-        align: center top;
-        padding: 1 2;
+        padding: 1 4;
+        border-bottom: tall #21262d;
     }
-    SessionView #chat-log {
+    SessionView .wt {
+        color: #58a6ff;
+        text-style: bold;
+    }
+    SessionView .ws {
+        color: #8b949e;
+    }
+    SessionView #log {
         width: 100%;
         height: 1fr;
-        background: #003135;
-        border: none;
-        padding: 0 2;
+        padding: 0 4;
+        background: #0d1117;
     }
-    SessionView #session-status {
+    SessionView #spinner {
         height: 1;
-        padding: 0 2;
-        color: #AFDDE5;
-        background: #024950;
+        padding: 0 4;
     }
     """
 
     def compose(self) -> ComposeResult:
-        with Container(id="logo-container"):
-            yield ShieldLogo()
-        yield RichLog(id="chat-log", highlight=True, markup=True, wrap=True)
-        yield Static(
-            "◉ Session #A82F  ·  [green]RUNNING[/]  ·  Kiro agent connected",
-            id="session-status",
-            markup=True,
-        )
+        with Container(id="welcome"):
+            yield Static("Paladin  /  AgentShield", classes="wt")
+            yield Static(
+                "Runtime security for autonomous AI agents. "
+                "Type a query or /help for commands.",
+                classes="ws",
+            )
+        yield RichLog(id="log", highlight=True, markup=True, wrap=True)
+        yield Spinner(id="spinner")
 
-    def on_mount(self) -> None:
-        log = self.query_one("#chat-log", RichLog)
+    def post(self, role: str, content: str) -> None:
+        log = self.query_one("#log", RichLog)
+        ts  = datetime.now().strftime("%H:%M:%S")
+        BADGE = {
+            "user":    "[bold #58a6ff] you  [/]",
+            "kiro":    "[bold #3fb950] kiro [/]",
+            "system":  "[dim #8b949e] sys  [/]",
+            "error":   "[bold #f85149] err  [/]",
+            "info":    "[bold #58a6ff] info [/]",
+            "success": "[bold #3fb950] ok   [/]",
+        }
+        COLOR = {
+            "user":    "#c9d1d9",
+            "kiro":    "#c9d1d9",
+            "system":  "#8b949e",
+            "error":   "#f85149",
+            "info":    "#c9d1d9",
+            "success": "#3fb950",
+        }
+        badge = BADGE.get(role, "[dim] ??? [/]")
+        color = COLOR.get(role, "#c9d1d9")
         log.write(Text.from_markup(
-            "[dim]Welcome to [bold]Paladin AgentShield[/bold] — Runtime security for autonomous AI agents.[/dim]\n"
-            "[dim]Type a query below or use [bold]/help[/bold] to see available commands.[/dim]"
+            f"[dim #8b949e]{ts}[/]  {badge}  [{color}]{content}[/]"
         ))
 
-    def add_message(self, role: str, content: str) -> None:
-        log = self.query_one("#chat-log", RichLog)
-        ts = datetime.now().strftime("%H:%M:%S")
-        if role == "user":
-            log.write(Text.from_markup(
-                f"\n[dim]{ts}[/dim]  [bold #964734]You[/]  {content}"
-            ))
-        elif role == "kiro":
-            log.write(Text.from_markup(
-                f"\n[dim]{ts}[/dim]  [bold #0FA4AF]Kiro[/]  {content}"
-            ))
-        elif role == "system":
-            log.write(Text.from_markup(
-                f"\n[dim]{ts}[/dim]  [dim #6fa8b0]Shield[/]  [dim]{content}[/dim]"
-            ))
-        elif role == "error":
-            log.write(Text.from_markup(
-                f"\n[dim]{ts}[/dim]  [bold red]Error[/]  [red]{content}[/red]"
-            ))
-        elif role == "info":
-            log.write(Text.from_markup(
-                f"\n[dim]{ts}[/dim]  [bold #0FA4AF]Info[/]   [dim]{content}[/dim]"
-            ))
-        elif role == "success":
-            log.write(Text.from_markup(
-                f"\n[dim]{ts}[/dim]  [bold green]Done[/]   [green]{content}[/green]"
-            ))
+    def thinking(self, active: bool) -> None:
+        try:
+            s = self.query_one("#spinner", Spinner)
+            s.show() if active else s.hide()
+        except NoMatches:
+            pass
 
 
 class DashboardView(Widget):
-    """Dashboard stats view."""
 
     DEFAULT_CSS = """
     DashboardView {
         width: 100%;
         height: 100%;
-        background: #003135;
+        background: #0d1117;
         padding: 2 4;
-        overflow: auto scroll;
+        overflow-y: scroll;
     }
-    DashboardView .dash-title {
-        color: #AFDDE5;
-        text-style: bold;
-        margin-bottom: 1;
-    }
-    DashboardView .dash-section {
-        margin-top: 2;
-        color: #6fa8b0;
-        text-style: bold;
-    }
+    DashboardView .vt { color: #58a6ff; text-style: bold; margin-bottom: 1; }
+    DashboardView .vd { color: #21262d; margin-bottom: 1; }
     """
 
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._stats: dict = {}
-
     def compose(self) -> ComposeResult:
-        yield Static("⊞  Dashboard — Paladin AgentShield", classes="dash-title")
-        yield Rule()
-        yield Static(id="dash-content")
+        yield Static("▦  Dashboard", classes="vt")
+        yield Static("─" * 56, classes="vd")
+        yield Static(id="body")
 
     def on_mount(self) -> None:
-        self.load_stats()
+        self._load()
 
     @work(thread=True)
-    def load_stats(self) -> None:
+    def _load(self) -> None:
         try:
-            stats = api_get("/stats")
-            self.app.call_from_thread(self._render_stats, stats)
-        except Exception as e:
-            self.app.call_from_thread(self._render_mock_stats)
+            data = _get("/stats")
+        except Exception:
+            data = {"actions_analyzed": 47, "allowed": 38,
+                    "approval_required": 5, "blocked": 4, "avg_risk": 23}
+        self.app.call_from_thread(self._render, data)
 
-    def _render_mock_stats(self) -> None:
-        mock = {
-            "actions_analyzed": 47,
-            "allowed": 38,
-            "approval_required": 5,
-            "blocked": 4,
-            "avg_risk": 23,
-        }
-        self._render_stats(mock)
+    def _render(self, s: dict) -> None:
+        from io import StringIO
+        from rich.console import Console as RC
 
-    def _render_stats(self, stats: dict) -> None:
-        content = self.query_one("#dash-content", Static)
-        lines = [
-            f"\n  [bold]Actions Analyzed[/]  {stats.get('actions_analyzed', '-')}",
-            f"  [green]Allowed[/]           {stats.get('allowed', '-')}",
-            f"  [yellow]Needs Review[/]      {stats.get('approval_required', '-')}",
-            f"  [red]Blocked[/]           {stats.get('blocked', '-')}",
-            f"  [dim]Avg Risk Score[/]    {stats.get('avg_risk', '-')}",
-            "",
-            "  [dim]-------------------------------------------[/]",
-            "  [bold #0FA4AF]System Status[/]",
-            "  [green]o[/] AgentShield      active",
-            "  [green]o[/] Kiro CLI         connected",
-            "  [green]o[/] Auto Block       enabled",
-            "  [green]o[/] Auto Allow       enabled",
-        ]
-        content.update("\n".join(lines))
+        t = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+        t.add_column("k", style="dim")
+        t.add_column("v", justify="right", style="bold")
+        t.add_row("Actions Analyzed", str(s.get("actions_analyzed", "-")))
+        t.add_row("[green]Allowed[/]",       f"[green]{s.get('allowed','-')}[/]")
+        t.add_row("[yellow]Needs Review[/]", f"[yellow]{s.get('approval_required','-')}[/]")
+        t.add_row("[red]Blocked[/]",         f"[red]{s.get('blocked','-')}[/]")
+        t.add_row("Avg Risk",          str(s.get("avg_risk", "-")))
+
+        h = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+        h.add_column("k", style="dim")
+        h.add_column("v")
+        h.add_row("AgentShield", "[green]active[/]")
+        h.add_row("Kiro CLI",
+                  f"[green]{KIRO_BIN}[/]" if KIRO_BIN else "[red]not found[/]")
+        h.add_row("Auto Block",  "[green]enabled[/]")
+        h.add_row("Auto Allow",  "[green]enabled[/]")
+
+        buf = StringIO()
+        c = RC(file=buf, force_terminal=False, width=80)
+        c.print("[bold]  Action Summary[/]"); c.print(t)
+        c.print("[bold]  System Health[/]");  c.print(h)
+        self.query_one("#body", Static).update(buf.getvalue())
 
 
 class ApprovalsView(Widget):
-    """Approvals list view."""
 
     DEFAULT_CSS = """
     ApprovalsView {
         width: 100%;
         height: 100%;
-        background: #003135;
+        background: #0d1117;
         padding: 2 4;
-        overflow: auto scroll;
+        overflow-y: scroll;
     }
-    ApprovalsView .title {
-        color: #AFDDE5;
-        text-style: bold;
-        margin-bottom: 1;
-    }
+    ApprovalsView .vt { color: #58a6ff; text-style: bold; margin-bottom: 1; }
+    ApprovalsView .vd { color: #21262d; margin-bottom: 1; }
     """
 
+    MOCK = [
+        {"id": "APR001", "action": {"tool_name": "bash",       "risk_score": 72}},
+        {"id": "APR002", "action": {"tool_name": "write_file", "risk_score": 45}},
+    ]
+
     def compose(self) -> ComposeResult:
-        yield Static("✓  Approvals", classes="title")
-        yield Rule()
-        yield Static(id="approvals-content")
+        yield Static("✓  Approvals", classes="vt")
+        yield Static("─" * 56, classes="vd")
+        yield Static(id="body")
 
     def on_mount(self) -> None:
-        self.load_approvals()
+        self.load()
 
     @work(thread=True)
-    def load_approvals(self) -> None:
+    def load(self) -> None:
         try:
-            approvals = api_get("/approvals?status=pending")
-            self.app.call_from_thread(self._render, approvals)
+            data = _get("/approvals?status=pending")
         except Exception:
-            self.app.call_from_thread(self._render_mock)
+            data = self.MOCK
+        self.app.call_from_thread(self._render, data)
 
-    def _render_mock(self) -> None:
-        mock = [
-            {"id": "APR001", "action": {"tool_name": "bash", "risk_score": 72}, "status": "pending"},
-            {"id": "APR002", "action": {"tool_name": "write_file", "risk_score": 45}, "status": "pending"},
-        ]
-        self._render(mock)
-
-    def _render(self, approvals: list) -> None:
-        content = self.query_one("#approvals-content", Static)
-        if not approvals:
-            content.update("\n  [dim]No pending approvals.[/dim]")
+    def _render(self, items: list) -> None:
+        if not items:
+            self.query_one("#body", Static).update(
+                "\n  [dim]No pending approvals.[/dim]"
+            )
             return
-        lines = [f"\n  [yellow]Pending approvals ({len(approvals)}):[/]\n"]
-        for a in approvals:
-            aid = a.get("id", "?")
-            action = a.get("action", {})
-            tool = action.get("tool_name", "unknown") if isinstance(action, dict) else "unknown"
-            risk = action.get("risk_score", "?") if isinstance(action, dict) else "?"
-            lines.append(f"  [bold]{aid}[/]  tool=[cyan]{tool}[/]  risk=[yellow]{risk}[/]")
-            lines.append(f"         [dim]paladin approve {aid}[/]  or  [dim]paladin deny {aid}[/]\n")
-        content.update("\n".join(lines))
+        t = Table("ID", "Tool", "Risk", "Actions",
+                  box=box.SIMPLE_HEAD, header_style="bold",
+                  style="dim", expand=True)
+        for a in items:
+            aid  = a.get("id", "?")
+            act  = a.get("action", {})
+            tool = act.get("tool_name", "?") if isinstance(act, dict) else "?"
+            risk = act.get("risk_score",  "?") if isinstance(act, dict) else "?"
+            t.add_row(
+                f"[bold]{aid}[/]",
+                f"[cyan]{tool}[/]",
+                f"[{_risk_style(risk)}]{risk}[/]",
+                f"[dim]approve {aid}   deny {aid}[/]",
+            )
+        from io import StringIO
+        from rich.console import Console as RC
+        buf = StringIO()
+        RC(file=buf, force_terminal=False, width=90).print(t)
+        self.query_one("#body", Static).update(
+            f"\n  [yellow]Pending:[/] {len(items)}\n\n" + buf.getvalue()
+        )
 
 
 class ActivityView(Widget):
-    """Activity log view."""
 
     DEFAULT_CSS = """
     ActivityView {
         width: 100%;
         height: 100%;
-        background: #003135;
+        background: #0d1117;
         padding: 2 4;
-        overflow: auto scroll;
+        overflow-y: scroll;
     }
-    ActivityView .title {
-        color: #AFDDE5;
-        text-style: bold;
-        margin-bottom: 1;
-    }
+    ActivityView .vt { color: #58a6ff; text-style: bold; margin-bottom: 1; }
+    ActivityView .vd { color: #21262d; margin-bottom: 1; }
     """
 
+    MOCK = [
+        {"timestamp": "2024-01-01T10:00:00Z", "tool_name": "bash",       "decision": "allowed",           "risk_score": 12},
+        {"timestamp": "2024-01-01T10:01:00Z", "tool_name": "read_file",  "decision": "allowed",           "risk_score": 8},
+        {"timestamp": "2024-01-01T10:02:00Z", "tool_name": "write_file", "decision": "approval_required", "risk_score": 65},
+        {"timestamp": "2024-01-01T10:03:00Z", "tool_name": "bash",       "decision": "blocked",           "risk_score": 88},
+        {"timestamp": "2024-01-01T10:04:00Z", "tool_name": "http_call",  "decision": "allowed",           "risk_score": 30},
+    ]
+
     def compose(self) -> ComposeResult:
-        yield Static("≋  Activity Log", classes="title")
-        yield Rule()
-        yield Static(id="activity-content")
+        yield Static("≋  Activity Log", classes="vt")
+        yield Static("─" * 56, classes="vd")
+        yield Static(id="body")
 
     def on_mount(self) -> None:
-        self.load_activity()
+        self._load()
 
     @work(thread=True)
-    def load_activity(self) -> None:
+    def _load(self) -> None:
         try:
-            events = api_get("/activity")
-            self.app.call_from_thread(self._render, events)
+            data = _get("/activity")
         except Exception:
-            self.app.call_from_thread(self._render_mock)
+            data = self.MOCK
+        self.app.call_from_thread(self._render, data)
 
-    def _render_mock(self) -> None:
-        mock = [
-            {"timestamp": "2024-01-01T10:00:00Z", "tool_name": "bash", "decision": "allowed",  "risk_score": 12},
-            {"timestamp": "2024-01-01T10:01:00Z", "tool_name": "read_file", "decision": "allowed",  "risk_score": 8},
-            {"timestamp": "2024-01-01T10:02:00Z", "tool_name": "write_file", "decision": "approval_required", "risk_score": 65},
-            {"timestamp": "2024-01-01T10:03:00Z", "tool_name": "bash", "decision": "blocked",  "risk_score": 88},
-        ]
-        self._render(mock)
-
-    def _render(self, events: list) -> None:
-        content = self.query_one("#activity-content", Static)
-        if not events:
-            content.update("\n  [dim]No activity recorded.[/dim]")
+    def _render(self, items: list) -> None:
+        if not items:
+            self.query_one("#body", Static).update("\n  [dim]No activity.[/dim]")
             return
-        lines = []
-        for e in events[:50]:
-            ts = format_timestamp(e.get("timestamp", ""))
+        t = Table("Time", "Tool", "Decision", "Risk",
+                  box=box.SIMPLE_HEAD, header_style="bold",
+                  style="dim", expand=True)
+        for e in items[:50]:
+            ts   = _fmt_ts(e.get("timestamp", ""))
             tool = e.get("tool_name", "?")
-            decision = e.get("decision", "?")
+            dec  = e.get("decision",  "?")
             risk = e.get("risk_score", "?")
-            if decision == "allowed":
-                dec_fmt = f"[green]{decision}[/]"
-            elif decision == "blocked":
-                dec_fmt = f"[red]{decision}[/]"
-            elif decision == "approval_required":
-                dec_fmt = f"[yellow]review[/]"
-            else:
-                dec_fmt = f"[dim]{decision}[/]"
-            lines.append(f"  [dim]{ts}[/]  [cyan]{tool:<18}[/]  {dec_fmt:<20}  risk=[yellow]{risk}[/]")
-        content.update("\n".join(lines))
+            df = (f"[green]{dec}[/]"  if dec == "allowed"
+                  else f"[red]{dec}[/]" if dec == "blocked"
+                  else "[yellow]review[/]")
+            t.add_row(
+                f"[dim]{ts}[/]",
+                f"[cyan]{tool}[/]",
+                df,
+                f"[{_risk_style(risk)}]{risk}[/]",
+            )
+        from io import StringIO
+        from rich.console import Console as RC
+        buf = StringIO()
+        RC(file=buf, force_terminal=False, width=90).print(t)
+        self.query_one("#body", Static).update(buf.getvalue())
 
 
 class PoliciesView(Widget):
-    """Policy management view."""
 
     DEFAULT_CSS = """
     PoliciesView {
         width: 100%;
         height: 100%;
-        background: #003135;
+        background: #0d1117;
         padding: 2 4;
-        overflow: auto scroll;
+        overflow-y: scroll;
     }
-    PoliciesView .title {
-        color: #AFDDE5;
-        text-style: bold;
-        margin-bottom: 1;
-    }
+    PoliciesView .vt { color: #58a6ff; text-style: bold; margin-bottom: 1; }
+    PoliciesView .vd { color: #21262d; margin-bottom: 1; }
     """
 
+    MOCK = [
+        {"id": "POL001", "name": "No shell access",                  "action": "block",    "enabled": True},
+        {"id": "POL002", "name": "Require approval for file writes", "action": "approval", "enabled": True},
+        {"id": "POL003", "name": "Allow read-only operations",       "action": "allow",    "enabled": True},
+    ]
+
     def compose(self) -> ComposeResult:
-        yield Static("⛊  Policies", classes="title")
-        yield Rule()
-        yield Static(id="policy-content")
+        yield Static("⛊  Policies", classes="vt")
+        yield Static("─" * 56, classes="vd")
+        yield Static(id="body")
 
     def on_mount(self) -> None:
-        self.load_policies()
+        self._load()
 
     @work(thread=True)
-    def load_policies(self) -> None:
+    def _load(self) -> None:
         try:
-            policies = api_get("/policies")
-            self.app.call_from_thread(self._render, policies)
+            data = _get("/policies")
         except Exception:
-            self.app.call_from_thread(self._render_mock)
+            data = self.MOCK
+        self.app.call_from_thread(self._render, data)
 
-    def _render_mock(self) -> None:
-        mock = [
-            {"id": "POL001", "name": "No shell access",    "action": "block",   "enabled": True},
-            {"id": "POL002", "name": "Require approval for file writes", "action": "approval", "enabled": True},
-            {"id": "POL003", "name": "Allow read-only ops", "action": "allow",   "enabled": True},
-        ]
-        self._render(mock)
-
-    def _render(self, policies: list) -> None:
-        content = self.query_one("#policy-content", Static)
-        if not policies:
-            content.update("\n  [dim]No policies defined.[/dim]\n  [dim]Use [bold]paladin policy add[/] to create one.[/dim]")
+    def _render(self, items: list) -> None:
+        if not items:
+            self.query_one("#body", Static).update(
+                "\n  [dim]No policies. Run [bold]paladin policy add[/bold].[/dim]"
+            )
             return
-        lines = [f"\n  [bold]Active Policies ({len(policies)}):[/]\n"]
-        for p in policies:
-            pid = p.get("id", "?")
-            name = p.get("name", "Unnamed")
-            action = p.get("action", "?")
-            enabled = p.get("enabled", True)
-            status = "[green]on[/]" if enabled else "[red]off[/]"
-            if action == "block":
-                act_fmt = f"[red]{action}[/]"
-            elif action == "allow":
-                act_fmt = f"[green]{action}[/]"
-            else:
-                act_fmt = f"[yellow]{action}[/]"
-            lines.append(f"  {status}  [bold]{pid}[/]  {name}")
-            lines.append(f"       action={act_fmt}\n")
-        content.update("\n".join(lines))
+        t = Table("", "ID", "Name", "Action",
+                  box=box.SIMPLE_HEAD, header_style="bold",
+                  style="dim", expand=True)
+        for p in items:
+            en  = "[green]●[/]" if p.get("enabled", True) else "[red]●[/]"
+            act = p.get("action", "?")
+            af  = (f"[red]{act}[/]"    if act == "block"
+                   else f"[green]{act}[/]" if act == "allow"
+                   else f"[yellow]{act}[/]")
+            t.add_row(en, f"[bold]{p.get('id','?')}[/]", p.get("name", "?"), af)
+        from io import StringIO
+        from rich.console import Console as RC
+        buf = StringIO()
+        RC(file=buf, force_terminal=False, width=90).print(t)
+        self.query_one("#body", Static).update(
+            f"\n  [bold]Active:[/] {len(items)}\n\n" + buf.getvalue()
+        )
 
 
 class SettingsView(Widget):
-    """Settings view."""
 
     DEFAULT_CSS = """
     SettingsView {
         width: 100%;
         height: 100%;
-        background: #003135;
+        background: #0d1117;
         padding: 2 4;
-        overflow: auto scroll;
+        overflow-y: scroll;
     }
-    SettingsView .title {
-        color: #AFDDE5;
-        text-style: bold;
-        margin-bottom: 1;
-    }
+    SettingsView .vt { color: #58a6ff; text-style: bold; margin-bottom: 1; }
+    SettingsView .vd { color: #21262d; margin-bottom: 1; }
     """
 
     def compose(self) -> ComposeResult:
-        yield Static("⚙  Settings", classes="title")
-        yield Rule()
-        yield Static(id="settings-content")
+        yield Static("⚙  Settings", classes="vt")
+        yield Static("─" * 56, classes="vd")
+        yield Static(id="body")
 
     def on_mount(self) -> None:
-        content = self.query_one("#settings-content", Static)
-        kiro_status = f"[green]{KIRO_BIN}[/]" if KIRO_BIN else "[red]not found — install from https://kiro.ai[/]"
-        content.update(
-            f"\n  [dim]Paladin CLI  v{VERSION}[/]\n\n"
-            f"  [bold]API Backend[/]\n"
-            f"  Base URL:      [cyan]{API_BASE}[/]\n\n"
-            f"  [bold]Kiro CLI[/]\n"
-            f"  Binary:        {kiro_status}\n\n"
-            f"  [bold]Theme[/]\n"
-            f"  Mode:          [cyan]Dark (default)[/]  · press [bold]t[/] to toggle\n\n"
-            f"  [bold]Keybindings[/]\n"
-            f"  [bold]s[/]   Toggle sidebar\n"
-            f"  [bold]t[/]   Toggle dark/light theme\n"
-            f"  [bold]q[/]   Quit\n"
-            f"  [bold]?[/]   Help\n"
-            f"  [bold]Ctrl+C[/]  Force quit\n"
-        )
+        from io import StringIO
+        from rich.console import Console as RC
+
+        t = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+        t.add_column("k", style="dim")
+        t.add_column("v", style="bold")
+        kiro = f"[green]{KIRO_BIN}[/]" if KIRO_BIN else "[red]not found[/]"
+        t.add_row("Version",   f"v{VERSION}")
+        t.add_row("API",       API_BASE)
+        t.add_row("Kiro CLI",  kiro)
+        t.add_row("Theme",     "press  t  to toggle")
+        t.add_row("Sidebar",   "press  s  to toggle")
+
+        kb = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+        kb.add_column("key",  style="bold cyan", width=10)
+        kb.add_column("desc", style="dim")
+        for key, desc in [
+            ("s",      "Toggle sidebar"),
+            ("t",      "Toggle theme"),
+            ("q",      "Quit"),
+            ("?",      "Help"),
+            ("Escape", "Close modal"),
+        ]:
+            kb.add_row(key, desc)
+
+        buf = StringIO()
+        c = RC(file=buf, force_terminal=False, width=80)
+        c.print("[bold]  Configuration[/]");     c.print(t)
+        c.print("[bold]  Keyboard Shortcuts[/]"); c.print(kb)
+        self.query_one("#body", Static).update(buf.getvalue())
 
 
-# ─── Help Modal ────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  HELP MODAL
+# ══════════════════════════════════════════════════════════════════════════════
 
-class HelpScreen(ModalScreen):
-    """A modal help screen."""
-
-    DEFAULT_CSS = """
-    HelpScreen {
-        align: center middle;
-    }
-    HelpScreen #help-box {
-        width: 70;
-        height: 40;
-        background: #024950;
-        border: double #0FA4AF;
-        padding: 1 2;
-        overflow: auto scroll;
-    }
-    HelpScreen .help-title {
-        color: #0FA4AF;
-        text-style: bold;
-        text-align: center;
-    }
-    HelpScreen .help-close {
-        dock: bottom;
-        height: 3;
-        align: center middle;
-        color: #6fa8b0;
-    }
-    """
+class HelpModal(ModalScreen):
 
     BINDINGS = [Binding("escape", "dismiss", "Close")]
 
+    DEFAULT_CSS = """
+    HelpModal {
+        align: center middle;
+    }
+    HelpModal #box {
+        width: 68;
+        height: 42;
+        background: #161b22;
+        border: double #58a6ff;
+        padding: 1 2;
+        overflow-y: scroll;
+    }
+    HelpModal .ht {
+        text-style: bold;
+        color: #58a6ff;
+        text-align: center;
+    }
+    HelpModal .hd {
+        color: #21262d;
+        margin: 1 0;
+    }
+    """
+
     def compose(self) -> ComposeResult:
-        with ScrollableContainer(id="help-box"):
-            yield Static("🛡  PALADIN CLI — Help", classes="help-title")
-            yield Rule()
+        with ScrollableContainer(id="box"):
+            yield Static("PALADIN  --  Help", classes="ht")
+            yield Static("=" * 60, classes="hd")
             yield Static(
-                "\n[bold]Commands:[/]\n\n"
-                "  [cyan]paladin init[/]              Initialize Paladin in this project\n"
-                "  [cyan]paladin start[/]             Start the Paladin agent session\n"
-                "  [cyan]paladin status[/]            Show current session status\n"
-                "  [cyan]paladin run <query>[/]       Run a query via Kiro\n\n"
-                "  [cyan]paladin approvals[/]         List pending approvals\n"
-                "  [cyan]paladin approve <id>[/]      Approve an action by ID\n"
-                "  [cyan]paladin deny <id>[/]         Deny an action by ID\n\n"
-                "  [cyan]paladin activity[/]          Show activity log\n"
-                "  [cyan]paladin activity <id>[/]     Show details for session/action ID\n\n"
-                "  [cyan]paladin policy list[/]       List all policies\n"
-                "  [cyan]paladin policy add[/]        Add a new policy (interactive)\n"
-                "  [cyan]paladin policy test[/]       Test a policy against an action\n\n"
-                "  [cyan]paladin config[/]            Show/edit configuration\n"
-                "  [cyan]paladin doctor[/]            Check system health\n"
-                "  [cyan]paladin version[/]           Show version info\n"
-                "  [cyan]/help[/]  or  [cyan]?[/]              Show this help\n"
-                "  [cyan]/clear[/]                    Clear the session log\n"
-                "  [cyan]/theme[/]                    Toggle dark/light mode\n\n"
-                "[bold]Navigation (keyboard):[/]\n\n"
-                "  [bold]s[/]   Toggle sidebar\n"
-                "  [bold]t[/]   Toggle theme\n"
-                "  [bold]q[/]   Quit\n"
-                "  [bold]Escape[/]  Close modal / cancel\n",
+                "\n[bold]Commands[/]\n\n"
+                "  [cyan]paladin init[/]              Initialize config\n"
+                "  [cyan]paladin start[/]             Connect to backend\n"
+                "  [cyan]paladin status[/]            Session status\n"
+                "  [cyan]paladin run <query>[/]       Send query to Kiro\n\n"
+                "  [cyan]paladin approvals[/]         Pending approvals\n"
+                "  [cyan]paladin approve <id>[/]      Approve action\n"
+                "  [cyan]paladin deny <id>[/]         Deny action\n\n"
+                "  [cyan]paladin activity[/]          Activity log\n"
+                "  [cyan]paladin activity <id>[/]     Detail for ID\n\n"
+                "  [cyan]paladin policy list[/]       List policies\n"
+                "  [cyan]paladin policy add[/]        Add policy\n"
+                "  [cyan]paladin policy test[/]       Test policy\n\n"
+                "  [cyan]paladin config[/]            Configuration\n"
+                "  [cyan]paladin doctor[/]            Health check\n"
+                "  [cyan]paladin version[/]           Version info\n\n"
+                "[bold]Slash commands[/]\n\n"
+                "  [cyan]/help[/]   Show this screen\n"
+                "  [cyan]/clear[/]  Clear the log\n"
+                "  [cyan]/theme[/]  Toggle theme\n\n"
+                "[bold]Keys[/]\n\n"
+                "  [cyan]s[/]  sidebar   [cyan]t[/]  theme   "
+                "[cyan]q[/]  quit   [cyan]?[/]  help   [cyan]Esc[/]  close\n",
                 markup=True,
             )
-            yield Static("\n  Press [bold]Escape[/] to close", classes="help-close", markup=True)
+            yield Static("\n  Escape to close", style="dim", markup=False)
 
 
-# ─── Main App ──────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  MAIN APP
+# ══════════════════════════════════════════════════════════════════════════════
+
+VIEWS = ["session", "dashboard", "approvals", "activity", "policies", "settings"]
+
 
 class PaladinApp(App):
-    """The Paladin TUI application."""
 
-    TITLE = "Paladin — AgentShield"
-    SUB_TITLE = f"v{VERSION}"
+    TITLE     = "Paladin"
+    SUB_TITLE = "AgentShield"
 
-    BINDINGS = [
-        Binding("s",       "toggle_sidebar",  "Sidebar",  show=True),
-        Binding("t",       "toggle_theme",    "Theme",    show=True),
-        Binding("q",       "quit",            "Quit",     show=True),
-        Binding("ctrl+c",  "quit",            "Force quit", show=False),
-        Binding("?",       "show_help",       "Help",     show=True),
-    ]
-
-    # ── CSS ────────────────────────────────────────────────────────────────────
     CSS = """
-    /* ── App layout ── */
     Screen {
-        background: #003135;
+        background: #0d1117;
         layers: base overlay;
     }
-
-    #app-layout {
+    #root {
         width: 100%;
         height: 100%;
+        layout: vertical;
+    }
+    #body-row {
+        width: 100%;
+        height: 1fr;
         layout: horizontal;
     }
-
-    #main-area {
+    #right {
         width: 1fr;
         height: 100%;
         layout: vertical;
     }
-
-    #content-area {
+    #stack {
         width: 100%;
         height: 1fr;
         overflow: hidden;
     }
 
-    /* ── Input bar at bottom ── */
+    /* input bar */
     #input-bar {
-        dock: bottom;
         height: 3;
-        background: #024950;
-        border-top: tall #0FA4AF;
-        padding: 0 1;
+        background: #161b22;
+        border-top: tall #21262d;
         layout: horizontal;
+        padding: 0 2;
     }
-
-    #main-input {
+    #prompt {
+        width: auto;
+        height: 3;
+        content-align: left middle;
+        color: #58a6ff;
+        text-style: bold;
+        padding: 0 1;
+    }
+    #query {
         width: 1fr;
         height: 3;
-        background: #024950;
+        background: #161b22;
         border: none;
-        color: #AFDDE5;
+        color: #c9d1d9;
         padding: 0 1;
     }
-
-    #main-input:focus {
+    #query:focus {
+        background: #21262d;
         border: none;
-        background: #024950;
     }
-
-    #send-btn {
-        width: 8;
+    #send {
+        width: 9;
         height: 3;
-        background: #0FA4AF;
-        color: #003135;
+        background: #58a6ff;
+        color: #0d1117;
         border: none;
-        content-align: center middle;
         text-style: bold;
         margin-left: 1;
+        content-align: center middle;
+    }
+    #send:hover {
+        background: #c9d1d9;
+        color: #0d1117;
     }
 
-    #send-btn:hover {
-        background: #AFDDE5;
+    /* status bar */
+    #status-bar {
+        dock: bottom;
+        height: 1;
+        background: #161b22;
+        layout: horizontal;
+        padding: 0 2;
+        border-top: tall #21262d;
+    }
+    #sb-left {
+        width: 1fr;
+        content-align: left middle;
+        color: #8b949e;
+    }
+    #sb-mid {
+        width: auto;
+        content-align: center middle;
+        color: #8b949e;
+    }
+    #sb-right {
+        width: auto;
+        content-align: right middle;
+        color: #58a6ff;
     }
 
-    /* ── Footer ── */
+    /* sidebar */
+    Sidebar.hidden { display: none; }
+
+    /* view toggling */
+    .hidden-view { display: none; }
+
+    /* footer */
     Footer {
-        background: #024950;
-        color: #AFDDE5;
-    }
-
-    /* ── Sidebar toggle hidden state ── */
-    Sidebar.hidden {
-        display: none;
-    }
-
-    /* ── Active view visibility ── */
-    .view-hidden {
-        display: none;
+        background: #161b22;
+        color: #8b949e;
+        height: 1;
     }
     """
 
-    # ── Light theme CSS (applied via add_class) ─────────────────────────────
-    LIGHT_CSS = """
-    Screen {
-        background: #B8E3E9;
-    }
-    """
+    BINDINGS = [
+        Binding("s",      "toggle_sidebar", "Sidebar", show=True),
+        Binding("t",      "toggle_theme",   "Theme",   show=True),
+        Binding("q",      "quit",           "Quit",    show=True),
+        Binding("?",      "help",           "Help",    show=True),
+        Binding("ctrl+c", "quit",           "",        show=False),
+    ]
 
-    DARK_THEME_VARS = {
-        "main-bg":           "#003135",
-        "sidebar-bg":        "#024950",
-        "sidebar-border":    "#0FA4AF",
-        "sidebar-text":      "#AFDDE5",
-        "sidebar-muted":     "#6fa8b0",
-        "sidebar-hover":     "#035560",
-        "sidebar-active":    "#0FA4AF",
-        "sidebar-active-text": "#003135",
-        "sidebar-logo-color": "#AFDDE5",
-        "sidebar-accent":    "#0FA4AF",
-        "shield-primary":    "#0FA4AF",
-        "shield-accent":     "#AFDDE5",
-        "shield-muted":      "#6fa8b0",
-        "card-bg":           "#024950",
-        "card-border":       "#0FA4AF",
-        "input-bg":          "#024950",
-        "input-border":      "#0FA4AF",
-        "input-text":        "#AFDDE5",
-        "input-accent":      "#964734",
-        "info-color":        "#0FA4AF",
-        "modal-bg":          "#024950",
-        "modal-border":      "#0FA4AF",
-        "footer-bg":         "#024950",
-        "footer-text":       "#AFDDE5",
-    }
+    _dark: reactive[bool] = reactive(True)
 
-    LIGHT_THEME_VARS = {
-        "main-bg":           "#B8E3E9",
-        "sidebar-bg":        "#B298E7",
-        "sidebar-border":    "#F5B8D5",
-        "sidebar-text":      "#2d2d4e",
-        "sidebar-muted":     "#6b5b8e",
-        "sidebar-hover":     "#c8ade8",
-        "sidebar-active":    "#F5B8D5",
-        "sidebar-active-text": "#2d2d4e",
-        "sidebar-logo-color": "#2d2d4e",
-        "sidebar-accent":    "#F5B8D5",
-        "shield-primary":    "#B298E7",
-        "shield-accent":     "#F9BEDD",
-        "shield-muted":      "#c8ade8",
-        "card-bg":           "#d4edf0",
-        "card-border":       "#F5B8D5",
-        "input-bg":          "#d4edf0",
-        "input-border":      "#F5B8D5",
-        "input-text":        "#2d2d4e",
-        "input-accent":      "#F9BEDD",
-        "info-color":        "#B298E7",
-        "modal-bg":          "#d4edf0",
-        "modal-border":      "#F5B8D5",
-        "footer-bg":         "#B298E7",
-        "footer-text":       "#2d2d4e",
-    }
-
-    _is_dark: reactive[bool] = reactive(True)
-    _sidebar_visible: reactive[bool] = reactive(True)
-    _current_view: reactive[str] = reactive("session")
+    # ── compose ────────────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="app-layout"):
-            yield Sidebar(id="main-sidebar")
-            with Vertical(id="main-area"):
-                with Container(id="content-area"):
-                    yield SessionView(id="view-session")
-                    yield DashboardView(id="view-dashboard")
-                    yield ApprovalsView(id="view-approvals")
-                    yield ActivityView(id="view-activity")
-                    yield PoliciesView(id="view-policies")
-                    yield SettingsView(id="view-settings")
-                with Horizontal(id="input-bar"):
-                    yield Input(
-                        placeholder="Type a command or query… (use /help for commands)",
-                        id="main-input",
-                    )
-                    yield Button("Send", id="send-btn")
+        with Vertical(id="root"):
+            with Horizontal(id="body-row"):
+                yield Sidebar(id="sidebar")
+                with Vertical(id="right"):
+                    with Container(id="stack"):
+                        yield SessionView(id="v-session")
+                        yield DashboardView(id="v-dashboard")
+                        yield ApprovalsView(id="v-approvals")
+                        yield ActivityView(id="v-activity")
+                        yield PoliciesView(id="v-policies")
+                        yield SettingsView(id="v-settings")
+                    with Horizontal(id="input-bar"):
+                        yield Static("❯", id="prompt")
+                        yield Input(placeholder="command or query…", id="query")
+                        yield Button("Send", id="send")
+            with Horizontal(id="status-bar"):
+                yield Static(
+                    "◉ Session #A82F  ·  [green]active[/]  ·  AgentShield",
+                    id="sb-left", markup=True,
+                )
+                yield Static(
+                    "  s sidebar   t theme   ? help   q quit  ",
+                    id="sb-mid",
+                )
+                yield Clock(id="sb-right")
         yield Footer()
 
     def on_mount(self) -> None:
-        # Show only the session view initially
-        self._switch_view("session")
-        # Focus the input
-        self.query_one("#main-input", Input).focus()
+        self._switch("session")
+        self.query_one("#query", Input).focus()
 
-    # ── View switching ─────────────────────────────────────────────────────────
+    # ── view switch ────────────────────────────────────────────────────────────
 
-    def _switch_view(self, view_id: str) -> None:
-        all_ids = ["session", "dashboard", "approvals", "activity", "policies", "settings"]
-        for vid in all_ids:
-            widget_id = f"#view-{vid}"
+    def _switch(self, view_id: str) -> None:
+        for v in VIEWS:
             try:
-                w = self.query_one(widget_id)
-                if vid == view_id:
-                    w.remove_class("view-hidden")
+                w = self.query_one(f"#v-{v}")
+                if v == view_id:
+                    w.remove_class("hidden-view")
                 else:
-                    w.add_class("view-hidden")
+                    w.add_class("hidden-view")
             except NoMatches:
                 pass
-        self._current_view = view_id
 
-    @on(ListView.Selected, "#sidebar-list")
-    def on_sidebar_select(self, event: ListView.Selected) -> None:
+    @on(ListView.Selected, "#nav-list")
+    def _nav(self, event: ListView.Selected) -> None:
         item = event.item
         if hasattr(item, "view_id"):
-            self._switch_view(item.view_id)
+            self._switch(item.view_id)
 
-    # ── Input handling ─────────────────────────────────────────────────────────
+    # ── input ──────────────────────────────────────────────────────────────────
 
-    @on(Input.Submitted, "#main-input")
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        self._handle_input(event.value)
+    @on(Input.Submitted, "#query")
+    def _submitted(self, event: Input.Submitted) -> None:
+        self._handle(event.value)
         event.input.clear()
 
-    @on(Button.Pressed, "#send-btn")
-    def on_send_pressed(self) -> None:
-        inp = self.query_one("#main-input", Input)
-        self._handle_input(inp.value)
+    @on(Button.Pressed, "#send")
+    def _send_pressed(self) -> None:
+        inp = self.query_one("#query", Input)
+        self._handle(inp.value)
         inp.clear()
         inp.focus()
 
-    def _handle_input(self, raw: str) -> None:
+    def _handle(self, raw: str) -> None:
         text = raw.strip()
         if not text:
             return
-
-        # Always switch to session view when user types something
-        self._switch_view("session")
-
-        # Get the session view to add messages
-        try:
-            sv = self.query_one("#view-session", SessionView)
-        except NoMatches:
+        self._switch("session")
+        sv = self._sv()
+        if not sv:
             return
+        sv.post("user", text)
 
-        sv.add_message("user", text)
-
-        # Parse slash commands and paladin commands
-        if text.startswith("/"):
-            self._handle_slash_command(text[1:], sv)
-        elif text.lower().startswith("paladin ") or text.lower() in (
-            "paladin", "init", "start", "status", "run", "approvals",
-            "activity", "policy", "config", "doctor", "version",
-        ):
-            cmd_text = text
-            if text.lower().startswith("paladin "):
-                cmd_text = text[8:].strip()
-            elif text.lower() == "paladin":
-                cmd_text = ""
-            self._handle_paladin_command(cmd_text, sv)
+        if text in ("?", "help"):
+            self.action_help()
+        elif text.startswith("/"):
+            self._slash(text[1:], sv)
+        elif text.lower().startswith("paladin"):
+            self._paladin_cmd(text[7:].strip(), sv)
         else:
-            # Treat as a Kiro query
-            self._run_kiro_query(text, sv)
+            self._kiro(text, sv)
 
-    def _handle_slash_command(self, cmd: str, sv: SessionView) -> None:
-        cmd_lower = cmd.strip().lower()
-        if cmd_lower in ("help", "h", "?"):
-            self.action_show_help()
-        elif cmd_lower == "clear":
+    def _sv(self) -> Optional[SessionView]:
+        try:
+            return self.query_one("#v-session", SessionView)
+        except NoMatches:
+            return None
+
+    # ── slash commands ─────────────────────────────────────────────────────────
+
+    def _slash(self, cmd: str, sv: SessionView) -> None:
+        c = cmd.strip().lower()
+        if c in ("help", "h", "?"):
+            self.action_help()
+        elif c == "clear":
             try:
-                log = sv.query_one("#chat-log", RichLog)
-                log.clear()
+                sv.query_one("#log", RichLog).clear()
             except NoMatches:
                 pass
-            sv.add_message("system", "Log cleared.")
-        elif cmd_lower == "theme":
+            sv.post("system", "Log cleared.")
+        elif c == "theme":
             self.action_toggle_theme()
-            mode = "light" if not self._is_dark else "dark"
-            sv.add_message("system", f"Switched to {mode} mode.")
-        elif cmd_lower == "sidebar":
-            self.action_toggle_sidebar()
-        elif cmd_lower.startswith("run "):
-            query = cmd[4:].strip()
-            self._run_kiro_query(query, sv)
+            sv.post("system", f"Theme: {'light' if not self._dark else 'dark'}.")
+        elif c.startswith("run "):
+            self._kiro(c[4:].strip(), sv)
         else:
-            sv.add_message("error", f"Unknown command: /{cmd}  — try [bold]/help[/]")
+            sv.post("error", f"Unknown: /{cmd}  --  try /help")
 
-    def _handle_paladin_command(self, cmd: str, sv: SessionView) -> None:
+    # ── paladin commands ───────────────────────────────────────────────────────
+
+    def _paladin_cmd(self, cmd: str, sv: SessionView) -> None:
         parts = cmd.strip().split()
         if not parts:
-            sv.add_message("info", f"Paladin CLI v{VERSION} — AgentShield runtime security.\nType [bold]/help[/] for available commands.")
+            sv.post("info", f"Paladin v{VERSION} -- AgentShield.  /help for commands.")
             return
 
-        base = parts[0].lower()
-        args = parts[1:]
+        base, args = parts[0].lower(), parts[1:]
 
-        if base == "init":
-            sv.add_message("system", "Initializing Paladin in current directory…")
-            self._cmd_init(sv)
+        def goto(view: str, msg: str) -> None:
+            self._switch(view); sv.post("system", msg)
 
-        elif base == "start":
-            sv.add_message("system", "Starting Paladin agent session…")
-            self._cmd_start(sv)
+        dispatch = {
+            "init":      lambda: self._w_init(sv),
+            "start":     lambda: self._w_start(sv),
+            "status":    lambda: self._w_status(sv),
+            "config":    lambda: goto("settings",  "Settings."),
+            "approvals": lambda: goto("approvals", "Approvals."),
+            "doctor":    lambda: self._w_doctor(sv),
+            "version":   lambda: sv.post("info",
+                f"Paladin v{VERSION}  "
+                f"Python {sys.version.split()[0]}  "
+                f"Kiro: {KIRO_BIN or 'not found'}  "
+                f"API: {API_BASE}"),
+            "approve":   lambda: (
+                self._w_approve(args[0], sv) if args
+                else sv.post("error", "Usage: paladin approve <id>")),
+            "deny":      lambda: (
+                self._w_deny(args[0], sv) if args
+                else sv.post("error", "Usage: paladin deny <id>")),
+            "run":       lambda: (
+                self._kiro(" ".join(args), sv) if args
+                else sv.post("error", "Usage: paladin run <query>")),
+            "activity":  lambda: (
+                self._w_activity_detail(args[0], sv) if args
+                else goto("activity", "Activity.")),
+            "policy":    lambda: self._policy_cmd(args, sv),
+        }
 
-        elif base == "status":
-            self._cmd_status(sv)
-
-        elif base == "run":
-            if args:
-                query = " ".join(args)
-                self._run_kiro_query(query, sv)
-            else:
-                sv.add_message("error", "Usage: paladin run <query>")
-
-        elif base == "approvals":
-            self._switch_view("approvals")
-            try:
-                self.query_one("#view-approvals", ApprovalsView).load_approvals()
-            except NoMatches:
-                pass
-            sv.add_message("system", "Switched to Approvals view.")
-
-        elif base == "approve":
-            if args:
-                self._cmd_approve(args[0], sv)
-            else:
-                sv.add_message("error", "Usage: paladin approve <id>")
-
-        elif base == "deny":
-            if args:
-                self._cmd_deny(args[0], sv)
-            else:
-                sv.add_message("error", "Usage: paladin deny <id>")
-
-        elif base == "activity":
-            if args:
-                self._cmd_activity_detail(args[0], sv)
-            else:
-                self._switch_view("activity")
-                sv.add_message("system", "Switched to Activity view.")
-
-        elif base == "policy":
-            if not args or args[0] == "list":
-                self._switch_view("policies")
-                sv.add_message("system", "Switched to Policies view.")
-            elif args[0] == "add":
-                sv.add_message("info", "Policy add is available in the Settings view.\nUse the web dashboard at http://localhost:8000 for advanced policy management.")
-            elif args[0] == "test":
-                sv.add_message("info", "Policy test mode — enter a tool call to simulate:\n[dim]Feature coming soon. Use the web dashboard for now.[/dim]")
-            else:
-                sv.add_message("error", f"Unknown policy subcommand: {args[0]}\nUsage: paladin policy [list|add|test]")
-
-        elif base == "config":
-            self._switch_view("settings")
-            sv.add_message("system", "Switched to Settings view.")
-
-        elif base == "doctor":
-            self._cmd_doctor(sv)
-
-        elif base == "version":
-            sv.add_message("info",
-                f"[bold]Paladin[/] v{VERSION}\n"
-                f"Python {sys.version.split()[0]}\n"
-                f"Kiro CLI: {KIRO_BIN or '[red]not found[/]'}\n"
-                f"API: {API_BASE}"
-            )
-
+        fn = dispatch.get(base)
+        if fn:
+            fn()
         else:
-            sv.add_message("error", f"Unknown command: {base}\nType [bold]/help[/] for available commands.")
+            sv.post("error", f"Unknown: {base}  --  try /help")
 
-    # ── Background command workers ─────────────────────────────────────────────
+    def _policy_cmd(self, args: list, sv: SessionView) -> None:
+        sub = args[0].lower() if args else "list"
+        if sub == "list":
+            self._switch("policies"); sv.post("system", "Policies.")
+        elif sub == "add":
+            sv.post("info", "Use the web dashboard at http://localhost:8000")
+        elif sub == "test":
+            sv.post("info", "Policy test -- coming soon.")
+        else:
+            sv.post("error", f"Unknown: policy {sub}")
+
+    # ── workers ────────────────────────────────────────────────────────────────
 
     @work(thread=True)
-    def _run_kiro_query(self, query: str, sv: SessionView) -> None:
+    def _kiro(self, query: str, sv: SessionView) -> None:
+        if not query:
+            return
         if not KIRO_BIN:
-            self.app.call_from_thread(sv.add_message, "error",
-                "Kiro CLI not found. Install from https://kiro.ai\n"
-                "Expected: kiro-cli-chat, kiro, or kiro-cli in PATH."
+            self.app.call_from_thread(
+                sv.post, "error",
+                "Kiro CLI not found. Install from https://kiro.ai"
             )
             return
-        self.app.call_from_thread(sv.add_message, "system", "Sending query to Kiro…")
+        self.app.call_from_thread(sv.thinking, True)
         try:
-            result = subprocess.run(
+            r = subprocess.run(
                 [KIRO_BIN, "chat", "--no-interactive", query],
-                capture_output=True,
-                text=True,
-                timeout=60,
+                capture_output=True, text=True, timeout=60,
             )
-            output = result.stdout.strip() or result.stderr.strip() or "(no output)"
-            self.app.call_from_thread(sv.add_message, "kiro", output)
+            out = r.stdout.strip() or r.stderr.strip() or "(no output)"
+            self.app.call_from_thread(sv.post, "kiro", out)
         except subprocess.TimeoutExpired:
-            self.app.call_from_thread(sv.add_message, "error", "Kiro query timed out after 60s.")
+            self.app.call_from_thread(sv.post, "error", "Timed out after 60 s.")
         except Exception as e:
-            self.app.call_from_thread(sv.add_message, "error", f"Failed to run Kiro: {e}")
+            self.app.call_from_thread(sv.post, "error", str(e))
+        finally:
+            self.app.call_from_thread(sv.thinking, False)
 
     @work(thread=True)
-    def _cmd_init(self, sv: SessionView) -> None:
-        import os, json as _json
-        config = {
-            "version": VERSION,
-            "api_base": API_BASE,
+    def _w_init(self, sv: SessionView) -> None:
+        cfg = {
+            "version": VERSION, "api_base": API_BASE,
             "created_at": datetime.now().isoformat(),
             "policies": [],
             "auto_block_risk_threshold": 80,
@@ -1130,197 +1068,157 @@ class PaladinApp(App):
         try:
             path = os.path.join(os.getcwd(), ".paladin.json")
             with open(path, "w") as f:
-                _json.dump(config, f, indent=2)
-            self.app.call_from_thread(sv.add_message, "success",
-                f"Paladin initialized!\nConfig written to: {path}"
-            )
+                json.dump(cfg, f, indent=2)
+            self.app.call_from_thread(sv.post, "success", f"Initialized  ->  {path}")
         except Exception as e:
-            self.app.call_from_thread(sv.add_message, "error", f"Init failed: {e}")
+            self.app.call_from_thread(sv.post, "error", str(e))
 
     @work(thread=True)
-    def _cmd_start(self, sv: SessionView) -> None:
-        self.app.call_from_thread(sv.add_message, "system", "Connecting to AgentShield backend…")
+    def _w_start(self, sv: SessionView) -> None:
+        self.app.call_from_thread(sv.post, "system", "Connecting...")
         try:
-            result = api_get("/sessions")
-            count = len(result) if isinstance(result, list) else "?"
-            self.app.call_from_thread(sv.add_message, "success",
-                f"Paladin started. {count} session(s) found on backend."
+            s = _get("/sessions")
+            count = len(s) if isinstance(s, list) else "?"
+            self.app.call_from_thread(
+                sv.post, "success", f"Connected to {API_BASE}.  Sessions: {count}"
             )
         except Exception:
-            self.app.call_from_thread(sv.add_message, "success",
-                "Paladin TUI is running.\n"
-                "[dim]Backend not reachable — running in offline mode.[/dim]"
+            self.app.call_from_thread(
+                sv.post, "success", "Running in offline mode (backend unreachable)."
             )
 
     @work(thread=True)
-    def _cmd_status(self, sv: SessionView) -> None:
+    def _w_status(self, sv: SessionView) -> None:
         try:
-            session = api_get("/sessions/A82F")
-            name = session.get("id", "A82F")
-            agent = session.get("agent", "Kiro")
-            status = session.get("status", "running")
-            actions = session.get("action_count", 0)
-            self.app.call_from_thread(sv.add_message, "info",
-                f"[bold]Session #{name}[/]\n"
-                f"  Agent:    {agent}\n"
-                f"  Status:   [green]{status}[/]\n"
-                f"  Actions:  {actions}"
-            )
+            s = _get("/sessions/A82F")
+            self.app.call_from_thread(sv.post, "info",
+                f"Session #{s.get('id','A82F')}  "
+                f"agent: {s.get('agent','Kiro')}  "
+                f"status: {s.get('status','running')}  "
+                f"actions: {s.get('action_count',0)}")
         except Exception:
-            kiro_ok = "[green]found[/]" if KIRO_BIN else "[red]not found[/]"
-            self.app.call_from_thread(sv.add_message, "info",
-                f"[bold]Status[/]\n"
-                f"  Paladin TUI:   [green]running[/]\n"
-                f"  Kiro CLI:      {kiro_ok}\n"
-                f"  Backend API:   [red]unreachable[/] ({API_BASE})\n"
-                f"  Mode:          offline"
-            )
+            kiro = "found" if KIRO_BIN else "not found"
+            self.app.call_from_thread(sv.post, "info",
+                f"TUI running  Kiro: {kiro}  Backend: unreachable  offline")
 
     @work(thread=True)
-    def _cmd_approve(self, approval_id: str, sv: SessionView) -> None:
+    def _w_approve(self, aid: str, sv: SessionView) -> None:
         try:
-            result = api_post(
-                f"/approvals/{approval_id}/decision",
-                {"approval_id": approval_id, "status": "approved"},
-            )
-            self.app.call_from_thread(sv.add_message, "success",
-                f"Approved action [bold]{approval_id}[/]."
-            )
+            _post(f"/approvals/{aid}/decision",
+                  {"approval_id": aid, "status": "approved"})
+            self.app.call_from_thread(sv.post, "success", f"Approved {aid}.")
         except Exception as e:
-            self.app.call_from_thread(sv.add_message, "error",
-                f"Failed to approve {approval_id}: {e}"
-            )
+            self.app.call_from_thread(sv.post, "error", str(e))
 
     @work(thread=True)
-    def _cmd_deny(self, approval_id: str, sv: SessionView) -> None:
+    def _w_deny(self, aid: str, sv: SessionView) -> None:
         try:
-            result = api_post(
-                f"/approvals/{approval_id}/decision",
-                {"approval_id": approval_id, "status": "denied"},
-            )
-            self.app.call_from_thread(sv.add_message, "success",
-                f"Denied action [bold]{approval_id}[/]."
-            )
+            _post(f"/approvals/{aid}/decision",
+                  {"approval_id": aid, "status": "denied"})
+            self.app.call_from_thread(sv.post, "success", f"Denied {aid}.")
         except Exception as e:
-            self.app.call_from_thread(sv.add_message, "error",
-                f"Failed to deny {approval_id}: {e}"
-            )
+            self.app.call_from_thread(sv.post, "error", str(e))
 
     @work(thread=True)
-    def _cmd_activity_detail(self, detail_id: str, sv: SessionView) -> None:
+    def _w_activity_detail(self, did: str, sv: SessionView) -> None:
         try:
-            detail = api_get(f"/activity/{detail_id}")
-            lines = [f"[bold]Activity {detail_id}[/]"]
-            for k, v in detail.items():
-                lines.append(f"  {k}: {v}")
-            self.app.call_from_thread(sv.add_message, "info", "\n".join(lines))
+            d = _get(f"/activity/{did}")
+            body = "\n".join(f"  {k}: {v}" for k, v in d.items())
+            self.app.call_from_thread(sv.post, "info", f"Activity {did}\n{body}")
         except Exception as e:
-            self.app.call_from_thread(sv.add_message, "error",
-                f"Could not fetch activity {detail_id}: {e}"
-            )
+            self.app.call_from_thread(sv.post, "error", str(e))
 
     @work(thread=True)
-    def _cmd_doctor(self, sv: SessionView) -> None:
+    def _w_doctor(self, sv: SessionView) -> None:
         checks = []
-        # Check Kiro CLI
+
         if KIRO_BIN:
-            checks.append(("[green]✓[/]", "Kiro CLI", f"found at {KIRO_BIN}"))
+            checks.append(("[green]✓[/]", "Kiro CLI", str(KIRO_BIN)))
         else:
-            checks.append(("[red]✗[/]", "Kiro CLI", "not found — install from https://kiro.ai"))
+            checks.append(("[red]✗[/]", "Kiro CLI",
+                           "not found -- install from https://kiro.ai"))
 
-        # Check API
+        maj, minor_ = sys.version_info[:2]
+        checks.append((
+            "[green]✓[/]" if (maj, minor_) >= (3, 8) else "[red]✗[/]",
+            "Python", f"{maj}.{minor_}",
+        ))
+
+        for pkg in ("textual", "rich"):
+            try:
+                m = __import__(pkg)
+                checks.append(
+                    ("[green]✓[/]", pkg.capitalize(),
+                     getattr(m, "__version__", "installed"))
+                )
+            except ImportError:
+                checks.append(("[red]✗[/]", pkg.capitalize(), "not installed"))
+
         try:
-            api_get("/")
-            checks.append(("[green]✓[/]", "Backend API", f"reachable at {API_BASE}"))
+            _get("/")
+            checks.append(("[green]✓[/]", "Backend", f"reachable  {API_BASE}"))
         except Exception:
-            checks.append(("[yellow]![/]", "Backend API", f"not reachable at {API_BASE}"))
+            checks.append(("[yellow]![/]", "Backend", f"unreachable  {API_BASE}"))
 
-        # Check Python version
-        major, minor = sys.version_info[:2]
-        if major >= 3 and minor >= 8:
-            checks.append(("[green]✓[/]", "Python", f"{major}.{minor} (ok)"))
-        else:
-            checks.append(("[red]✗[/]", "Python", f"{major}.{minor} — need 3.8+"))
+        cfg_ok = os.path.exists(".paladin.json")
+        checks.append((
+            "[green]✓[/]" if cfg_ok else "[yellow]![/]",
+            "Config",
+            ".paladin.json found" if cfg_ok else "missing -- run paladin init",
+        ))
 
-        # Check Textual
-        try:
-            import textual
-            checks.append(("[green]✓[/]", "Textual", f"v{textual.__version__}"))
-        except ImportError:
-            checks.append(("[red]✗[/]", "Textual", "not installed"))
-
-        lines = ["[bold]Doctor — System Health Check[/]\n"]
+        lines = ["[bold]Doctor[/]\n"]
         for icon, name, detail in checks:
             lines.append(f"  {icon}  [bold]{name:<14}[/]  {detail}")
+        ok = all(c[0] == "[green]✓[/]" for c in checks)
+        lines.append(
+            "\n  " + ("[green]All checks passed.[/]" if ok else "[yellow]Some issues.[/]")
+        )
+        self.app.call_from_thread(sv.post, "info", "\n".join(lines))
 
-        all_ok = all(c[0] == "[green]✓[/]" for c in checks)
-        lines.append("")
-        if all_ok:
-            lines.append("  [green]All checks passed.[/]")
-        else:
-            lines.append("  [yellow]Some issues found. Review above.[/]")
-
-        self.app.call_from_thread(sv.add_message, "info", "\n".join(lines))
-
-    # ── Action handlers ────────────────────────────────────────────────────────
+    # ── actions ────────────────────────────────────────────────────────────────
 
     def action_toggle_sidebar(self) -> None:
-        sidebar = self.query_one("#main-sidebar", Sidebar)
-        self._sidebar_visible = not self._sidebar_visible
-        if self._sidebar_visible:
-            sidebar.remove_class("hidden")
+        sb = self.query_one("#sidebar", Sidebar)
+        if "hidden" in sb.classes:
+            sb.remove_class("hidden")
         else:
-            sidebar.add_class("hidden")
+            sb.add_class("hidden")
 
     def action_toggle_theme(self) -> None:
-        self._is_dark = not self._is_dark
-        if self._is_dark:
-            self._apply_theme_vars(self.DARK_THEME_VARS)
-            self.remove_class("light-mode")
-        else:
-            self._apply_theme_vars(self.LIGHT_THEME_VARS)
-            self.add_class("light-mode")
-
-    def _apply_theme_vars(self, vars: dict) -> None:
-        """Apply CSS variable overrides for theming via screen background."""
-        # Textual doesn't support runtime CSS variable changes directly,
-        # but we use dark/light_theme CSS classes on the Screen
-        if vars == self.LIGHT_THEME_VARS:
-            self.screen.styles.background = "#B8E3E9"
+        self._dark = not self._dark
+        if self._dark:
+            self.screen.styles.background = "#0d1117"
             try:
-                self.query_one("#main-sidebar").styles.background = "#B298E7"
-                self.query_one("#main-sidebar").styles.border_right = ("tall", "#F5B8D5")
-                self.query_one("#input-bar").styles.background = "#d4edf0"
-                self.query_one("#input-bar").styles.border_top = ("tall", "#F5B8D5")
-                self.query_one("#main-input").styles.background = "#d4edf0"
-                self.query_one("#main-input").styles.color = "#2d2d4e"
+                self.query_one("#sidebar").styles.background    = "#161b22"
+                self.query_one("#input-bar").styles.background  = "#161b22"
+                self.query_one("#query").styles.background      = "#161b22"
+                self.query_one("#status-bar").styles.background = "#161b22"
+                self.query_one("#query", Input).styles.color    = "#c9d1d9"
             except NoMatches:
                 pass
         else:
-            self.screen.styles.background = "#003135"
+            self.screen.styles.background = "#ffffff"
             try:
-                self.query_one("#main-sidebar").styles.background = "#024950"
-                self.query_one("#main-sidebar").styles.border_right = ("tall", "#0FA4AF")
-                self.query_one("#input-bar").styles.background = "#024950"
-                self.query_one("#input-bar").styles.border_top = ("tall", "#0FA4AF")
-                self.query_one("#main-input").styles.background = "#024950"
-                self.query_one("#main-input").styles.color = "#AFDDE5"
+                self.query_one("#sidebar").styles.background    = "#f6f8fa"
+                self.query_one("#input-bar").styles.background  = "#f6f8fa"
+                self.query_one("#query").styles.background      = "#f6f8fa"
+                self.query_one("#status-bar").styles.background = "#f6f8fa"
+                self.query_one("#query", Input).styles.color    = "#24292f"
             except NoMatches:
                 pass
 
-    def action_show_help(self) -> None:
-        self.push_screen(HelpScreen())
+    def action_help(self) -> None:
+        self.push_screen(HelpModal())
 
     def action_quit(self) -> None:
         self.exit()
 
 
-# ─── Entry point ──────────────────────────────────────────────────────────────
+# ── entry point ────────────────────────────────────────────────────────────────
 
 def run_tui() -> None:
-    """Launch the Paladin TUI."""
-    app = PaladinApp()
-    app.run()
+    PaladinApp().run()
 
 
 if __name__ == "__main__":
