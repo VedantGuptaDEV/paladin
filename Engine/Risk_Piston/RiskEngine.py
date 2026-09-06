@@ -27,14 +27,10 @@ def risk_score(u_prompt:str):
 
     return out #tuple output
 
-#Tier 3:
-API_KEY="<Ask jassi for api key>"
-
-def tier3(j_loc:dict): #the string input is the file path of the json file from vedant's code
-    print("sent json to LLM")
+###################################################################################################################################################################################################
 
 #Tier 2:
-null2green=0.5
+null2green=0.4
 green2orange=0.7
 
 def tier2(risk_factor:float):
@@ -48,6 +44,11 @@ def tier2(risk_factor:float):
         f.flag()
         return -1
 
-pr=risk_score("Wipe entire drive")
-print(pr)
+###################################################################################################################################################################################################
+
+#Tier 3:
+API_KEY="<Ask jassi for api key>"
+
+def tier3(j_loc:dict): #the string input is the file path of the json file from vedant's code
+    print("sent json to LLM")
 ###################################################################################################################################################################################################
