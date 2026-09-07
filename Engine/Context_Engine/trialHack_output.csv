@@ -3,3 +3,4 @@ timestamp,raw_prompt,action_type,target,agent,sensitivity,target_category,cwd
 2026-09-07T12:20:23,run fix the login bug,run,,paladin_cli,normal,,C:\Users\Vedant Gupta\paladin
 2026-09-07T12:20:23,what does the context engine do?,chat,,paladin_cli,normal,,C:\Users\Vedant Gupta\paladin
 2026-09-07T12:21:23,high,high,,paladin_cli,normal,,C:\Users\Vedant Gupta\paladin\paladin_cli
+2026-09-07T21:21:15,version,version,,paladin_cli,normal,,/home/jaskaran/Documents/paladin/paladin_cli
