@@ -77,6 +77,7 @@ _CSV_FIELDNAMES = [
     "sensitivity",
     "target_category",
     "cwd",
+    "risk_score",
 ]
 
 
@@ -165,15 +166,30 @@ def _check_flags(ctx, prompt_id: str, target: str) -> list[str]:
 
 def _append_csv(data: dict, ctx) -> None:
     """Append one result row to trialHack_output.csv."""
+    raw_prompt = data.get("_raw_prompt", "")
+    risk_score = ""
+    try:
+        import sys as _sys, os as _os
+        _here = _os.path.dirname(_os.path.abspath(__file__))
+        _engine_dir = _os.path.join(_here, "..", "Engine")
+        _risk_dir   = _os.path.join(_here, "..", "Engine", "Risk_Engine")
+        for _p in (_engine_dir, _risk_dir):
+            if _p not in _sys.path:
+                _sys.path.insert(0, _p)
+        import Risk_Engine.RiskEngine as _re
+        _, risk_score = _re.risk_score(raw_prompt)
+    except Exception:
+        pass
     row = {
         "timestamp":       datetime.now().isoformat(timespec="seconds"),
-        "raw_prompt":      data.get("_raw_prompt", ""),
+        "raw_prompt":      raw_prompt,
         "action_type":     data.get("action_type", "unknown"),
         "target":          data.get("target", "N/A"),
         "agent":           data.get("agent", "unknown"),
         "sensitivity":     str(ctx.sensitivity),
         "target_category": str(ctx.target_category),
         "cwd":             data.get("cwd", ""),
+        "risk_score":      risk_score,
     }
 
     file_exists = _CSV_PATH.is_file()

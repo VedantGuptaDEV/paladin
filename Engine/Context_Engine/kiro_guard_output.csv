@@ -1,0 +1,4 @@
+timestamp,raw_prompt,action_type,target,agent,sensitivity,target_category,cwd,risk_score
+2026-09-07T22:41:56,run this shell command: echo hello,shell,echo hello,kiro,warn,55.30,C:\Users\Vedant Gupta\paladin,55.30
+2026-09-07T22:43:38,make a file Test.py,write,create,kiro,safe,N/A,C:\Users\Vedant Gupta\paladin\engine,N/A
+2026-09-07T22:44:37,delete Test.py,glob,Finding **/Test.py,kiro,safe,N/A,C:\Users\Vedant Gupta\paladin\engine,N/A
