@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { getDashboardStats, getRiskHistory, getSession } from "../../services/sessions";
+import { getDashboardStats, getRiskHistory } from "../../services/sessions";
 import { getActions } from "../../services/actions";
 import { Card, CardHeader, DecisionBadge, MetricCard, PageHeader, RiskScore, Timestamp, ToolChip } from "../../components/ui";
-import AttackReplayModal from "../../components/AttackReplayModal";
-import type { ToolAction, Session } from "../../types";
+import type { ToolAction } from "../../types";
 
 const mono = "'JetBrains Mono', monospace";
 
@@ -15,21 +14,19 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState<Stats | null>(null);
   const [riskHistory, setRiskHistory] = useState<RiskPoint[]>([]);
-  const [session, setSession] = useState<Session | null>(null);
   const [actions, setActions] = useState<ToolAction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [replayOpen, setReplayOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setError(null);
       try {
-        const [s, st, rh, acts] = await Promise.all([
-          getSession("A82F"), getDashboardStats(), getRiskHistory(), getActions("A82F"),
+        const [st, rh, acts] = await Promise.all([
+          getDashboardStats(), getRiskHistory(), getActions("A82F"),
         ]);
-        if (!cancelled) { setSession(s); setStats(st); setRiskHistory(rh); setActions(acts); }
+        if (!cancelled) { setStats(st); setRiskHistory(rh); setActions(acts); }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load dashboard");
       } finally {
@@ -41,43 +38,23 @@ export default function Dashboard() {
   }, []);
 
   if (loading) return <Msg>Loading…</Msg>;
-  if (error || !stats || !session) return <Msg color="var(--red)">{error ?? "Failed to load."}</Msg>;
+  if (error || !stats) return <Msg color="var(--red)">{error ?? "Failed to load."}</Msg>;
 
   return (
     <div style={{ padding: "28px 28px 48px" }}>
-      {replayOpen && <AttackReplayModal onClose={() => setReplayOpen(false)} />}
       <PageHeader
         title="Paladin"
         subtitle="Runtime security for autonomous AI agents."
         right={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {/* Attack Demo button */}
-            <button
-              onClick={() => setReplayOpen(true)}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                background: "var(--red-dim)", border: "1px solid var(--red-border)",
-                borderRadius: 5, padding: "6px 12px", cursor: "pointer",
-                fontFamily: mono, fontSize: 10, fontWeight: 600,
-                color: "var(--red)", letterSpacing: "0.06em",
-                textTransform: "uppercase",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-3)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "var(--red-dim)"; }}
-            >
-              ▶ Attack Demo
-            </button>
-            {/* Protection active badge */}
-            <div style={{
-              display: "flex", alignItems: "center", gap: 7,
-              background: "var(--bg-2)", border: "1px solid var(--border)",
-              borderRadius: 5, padding: "6px 11px",
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)", opacity: 0.8, display: "inline-block" }} />
-              <span style={{ fontFamily: mono, fontSize: 10, fontWeight: 500, color: "var(--text-1)", letterSpacing: "0.06em" }}>
-                PROTECTION ACTIVE
-              </span>
-            </div>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 7,
+            background: "var(--bg-2)", border: "1px solid var(--border)",
+            borderRadius: 5, padding: "6px 11px",
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)", opacity: 0.8, display: "inline-block" }} />
+            <span style={{ fontFamily: mono, fontSize: 10, fontWeight: 500, color: "var(--text-1)", letterSpacing: "0.06em" }}>
+              PROTECTION ACTIVE
+            </span>
           </div>
         }
       />
@@ -146,40 +123,6 @@ export default function Dashboard() {
         {/* Right */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Card>
-            <CardHeader title="Current Session" />
-            <div style={{ padding: "14px 16px" }}>
-              <p style={{ fontSize: 12, color: "var(--text-1)", fontStyle: "italic", margin: "0 0 14px", lineHeight: 1.5 }}>
-                &ldquo;{session.user_prompt}&rdquo;
-              </p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                <KV label="ID"      value={`#${session.id}`} />
-                <KV label="Agent"   value={session.agent} />
-                <KV label="Actions" value={String(session.action_count)} />
-                <KV label="Risk"    value={session.risk_level}
-                  color={session.risk_level === "medium" ? "var(--amber)" : "var(--green)"} />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)", opacity: 0.7, display: "inline-block" }} />
-                <span style={{ fontFamily: mono, fontSize: 10, color: "var(--text-2)", letterSpacing: "0.04em" }}>RUNNING</span>
-              </div>
-              <button
-                onClick={() => navigate("/session/A82F")}
-                style={{
-                  width: "100%", padding: "8px 0",
-                  background: "var(--bg-3)", border: "1px solid var(--border)",
-                  borderRadius: 5, color: "var(--text-1)",
-                  fontFamily: mono, fontSize: 11, fontWeight: 500,
-                  letterSpacing: "0.04em", cursor: "pointer",
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-0)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-1)"; }}
-              >
-                Open Session →
-              </button>
-            </div>
-          </Card>
-
-          <Card>
             <CardHeader title="Decision Split" />
             <div style={{ padding: "14px 16px" }}>
               <DistBar label="Allowed" value={stats.allowed}           total={stats.actions_analyzed} color="var(--green)" />
@@ -207,15 +150,6 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
-    </div>
-  );
-}
-
-function KV({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10, color: "var(--text-2)", fontFamily: mono, marginBottom: 2, letterSpacing: "0.04em", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontSize: 12, color: color ?? "var(--text-1)", fontFamily: mono }}>{value}</div>
     </div>
   );
 }
