@@ -1,6 +1,6 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-paladin ΓÇö AI security agent for your terminal.
+paladin — AI security agent for your terminal.
 Full-screen TUI: scrollable output + sticky status bar + sticky input.
 """
 
@@ -8,17 +8,17 @@ import os, sys, shutil, subprocess, json, platform, re, threading, csv
 from pathlib import Path
 from datetime import datetime
 
-# ΓöÇΓöÇ prompt_toolkit (minimal for simple CLI) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ── prompt_toolkit (minimal for simple CLI) ──────────────────────────────────
 HAS_PT = True  # We don't actually need prompt_toolkit for simple CLI
 
-# ΓöÇΓöÇ Rich (for input prompts only) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ── Rich (for input prompts only) ─────────────────────────────────────────────
 try:
     from rich.prompt import Prompt as RPrompt, Confirm as RConfirm
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False
 
-# ΓöÇΓöÇ paladin-engine (context screening) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ── paladin-engine (context screening) ────────────────────────────────────────
 try:
     import sys as _sys, os as _os
     # Make the local paladin-engine importable when not pip-installed
@@ -40,7 +40,7 @@ except Exception as _engine_err:
     _last_screen    = None
     _engine_err_msg = str(_engine_err)
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 VERSION      = "0.1.0"
 CONFIG_DIR   = Path.home() / ".paladin"
 CONFIG_FILE  = CONFIG_DIR / "config.json"
@@ -54,9 +54,9 @@ KIRO_BIN = (
     or shutil.which("kiro-cli")
 )
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # ANSI palette
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 R       = "\033[0m"
 B       = "\033[1m"
@@ -77,10 +77,10 @@ GREY    = "\033[38;5;243m"   # mid grey
 LGREY   = "\033[38;5;238m"   # dark grey (for borders)
 
 # background
-BG_MAIN = "\033[48;5;234m"   # #1c1c1c ΓÇö main bg
-BG_CARD = "\033[48;5;236m"   # #303030 ΓÇö card / user bubble bg
-BG_CODE = "\033[48;5;235m"   # #262626 ΓÇö code block bg
-BG_STAT = "\033[48;5;232m"   # #080808 ΓÇö status bar bg
+BG_MAIN = "\033[48;5;234m"   # #1c1c1c — main bg
+BG_CARD = "\033[48;5;236m"   # #303030 — card / user bubble bg
+BG_CODE = "\033[48;5;235m"   # #262626 — code block bg
+BG_STAT = "\033[48;5;232m"   # #080808 — status bar bg
 
 CYB     = f"{B}{CY}"         # bold cyan  (logo / headers)
 
@@ -92,14 +92,14 @@ def _W() -> int:
 def _box(w: int) -> tuple:
     """Return (top, mid, bot) border strings for a given inner width."""
     return (
-        f"{LGREY}Γò¡{'ΓöÇ'*w}Γò«{R}",
-        f"{LGREY}Γöé{R}",
-        f"{LGREY}Γò░{'ΓöÇ'*w}Γò»{R}",
+        f"{LGREY}╔{'─'*w}╗{R}",
+        f"{LGREY}│{R}",
+        f"{LGREY}╚{'─'*w}╝{R}",
     )
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Config / session
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 def _mkdirs():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -161,9 +161,9 @@ def _log_to_csv(raw_prompt: str, action_type: str = "chat",
     except Exception:
         pass  # never crash the CLI over a log write
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
-# Prompt log  (every input ΓåÆ trialHack_output.csv)
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
+# Prompt log  (every input → trialHack_output.csv)
+# ────────────────────────────────────────────────────────────────────────────
 
 _LOG_CSV = (Path(__file__).resolve().parent.parent
             / "Engine" / "Context_Engine" / "trialHack_output.csv")
@@ -198,9 +198,9 @@ def _log_to_csv(raw_prompt: str, action_type: str = "chat",
     except Exception:
         pass  # never crash the CLI over a log write
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Output buffer
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 _lines: list[str] = []
 _app = None
@@ -227,9 +227,9 @@ def _push(*ls: str):
 
 def _nl(): _push("")
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Markdown-lite streaming renderer
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 _in_code  = False
 _code_buf: list[str] = []
@@ -246,17 +246,17 @@ def _render_line(raw: str) -> list[str]:
     global _in_code, _code_buf
     line = raw.rstrip("\n")
 
-    # ΓöÇΓöÇ fenced code block ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── fenced code block ─────────────────────────────────────────────────────
     if line.startswith("```"):
         if not _in_code:
             _in_code = True
             lang = line[3:].strip() or "text"
             w = min(_W() - 10, 50)  # Reduced width for safety
-            return [f"   {BG_CODE}{LGREY}ΓöîΓöÇΓöÇ {CY2}{lang}{LGREY} {'ΓöÇ'*(w - len(lang) - 4)}ΓöÉ{R}"]
+            return [f"   {BG_CODE}{LGREY}┌── {CY2}{lang}{LGREY} {'─'*(w - len(lang) - 4)}┐{R}"]
         else:
             _in_code = False
             w = min(_W() - 10, 50)  # Reduced width for safety
-            return [f"   {BG_CODE}{LGREY}Γöö{'ΓöÇ'*w}Γöÿ{R}", ""]
+            return [f"   {BG_CODE}{LGREY}└{'─'*w}┘{R}", ""]
     if _in_code:
         w = min(_W() - 10, 50)  # Reduced width for safety
         padded = line.ljust(w)
@@ -265,62 +265,62 @@ def _render_line(raw: str) -> list[str]:
     if not line.strip():
         return [""]
 
-    # ΓöÇΓöÇ headings ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── headings ──────────────────────────────────────────────────────────────
     m = re.match(r"^(#{1,3}) (.*)", line)
     if m:
         lvl, txt = len(m.group(1)), m.group(2)
         if lvl == 1:
             w = min(_W() - 8, 50)  # Reduced width for safety
-            return ["", f"  {CYB}{txt}{R}", f"  {CY}{'ΓòÉ'*min(len(txt)+2,w)}{R}", ""]
+            return ["", f"  {CYB}{txt}{R}", f"  {CY}{'═'*min(len(txt)+2,w)}{R}", ""]
         elif lvl == 2:
-            return ["", f"  {B}{WH}{txt}{R}", f"  {LGREY}{'ΓöÇ'*min(len(txt)+2,40)}{R}", ""]  # Reduced from 60 to 40
+            return ["", f"  {B}{WH}{txt}{R}", f"  {LGREY}{'─'*min(len(txt)+2,40)}{R}", ""]  # Reduced from 60 to 40
         else:
             return [f"  {B}{GREY}{txt}{R}"]
 
-    # ΓöÇΓöÇ horizontal rule ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── horizontal rule ───────────────────────────────────────────────────────
     if re.match(r"^[-*_]{3,}$", line.strip()):
-        return [f"  {LGREY}{'ΓöÇ'*min(_W()-4,70)}{R}"]
+        return [f"  {LGREY}{'─'*min(_W()-4,70)}{R}"]
 
-    # ΓöÇΓöÇ bullet list ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    m = re.match(r"^(\s*)([-*ΓÇó]) (.*)", line)
+    # ── bullet list ───────────────────────────────────────────────────────────
+    m = re.match(r"^(\s*)([-*•]) (.*)", line)
     if m:
         depth  = len(m.group(1)) // 2
         indent = "    " * depth
-        icons  = [f"{CY}Γùå{R}", f"{CY2}Γùç{R}", f"{GREY}┬╖{R}"]
+        icons  = [f"{CY}⚠{R}", f"{CY2}◦{R}", f"{GREY}·{R}"]
         icon   = icons[min(depth, 2)]
         return [f"  {indent}{icon} {_inline(m.group(3))}"]
 
-    # ΓöÇΓöÇ numbered list ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── numbered list ─────────────────────────────────────────────────────────
     m = re.match(r"^(\s*)(\d+)\. (.*)", line)
     if m:
         depth  = len(m.group(1)) // 2
         indent = "    " * depth
         return [f"  {indent}{CY}{m.group(2)}.{R} {_inline(m.group(3))}"]
 
-    # ΓöÇΓöÇ blockquote ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── blockquote ────────────────────────────────────────────────────────────
     if line.startswith(">"):
-        return [f"  {CY}ΓûÄ{R}{IT}{GREY} {line[1:].strip()}{R}"]
+        return [f"  {CY}▌{R}{IT}{GREY} {line[1:].strip()}{R}"]
 
-    # ΓöÇΓöÇ table row (simple) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── table row (simple) ───────────────────────────────────────────────────
     if line.startswith("|") and line.endswith("|"):
         cells = [c.strip() for c in line.strip("|").split("|")]
-        parts = [f"  {LGREY}Γöé{R}"]
+        parts = [f"  {LGREY}│{R}"]
         for c in cells:
             if re.match(r"^[-: ]+$", c):
-                parts.append(f" {LGREY}{'ΓöÇ'*max(len(c),3)}{R} {LGREY}Γöé{R}")
+                parts.append(f" {LGREY}{'─'*max(len(c),3)}{R} {LGREY}│{R}")
             else:
-                parts.append(f" {_inline(c)} {LGREY}Γöé{R}")
+                parts.append(f" {_inline(c)} {LGREY}│{R}")
         return ["".join(parts)]
 
     return [f"  {_inline(line)}"]
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Bubbles & chrome
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 # consistent bg for the whole content area
-BG  = "\033[48;5;234m"    # #1c1c1c  ΓÇö main dark bg
-BGC = "\033[48;5;236m"    # #303030  ΓÇö slightly lighter for user bubble
+BG  = "\033[48;5;234m"    # #1c1c1c  — main dark bg
+BGC = "\033[48;5;236m"    # #303030  — slightly lighter for user bubble
 
 def _ansi_len(s: str) -> int:
     return len(re.sub(r"\x1b\[[0-9;]*m", "", s))
@@ -335,20 +335,20 @@ def _box_top(inner_w: int, title: str = "") -> str:
         tlen  = _ansi_len(title)
         left  = (inner_w - tlen) // 2
         right = inner_w - tlen - left
-        return f"{BG}{LGREY}Γò¡{'ΓöÇ'*left}{title}{'ΓöÇ'*right}Γò«{R}"
-    return f"{BG}{LGREY}Γò¡{'ΓöÇ'*inner_w}Γò«{R}"
+        return f"{BG}{LGREY}╔{'─'*left}{title}{'─'*right}╗{R}"
+    return f"{BG}{LGREY}╔{'─'*inner_w}╗{R}"
 
 def _box_row(content: str, inner_w: int, bg: str = "") -> str:
     used_bg = bg or BG
     vlen = _ansi_len(content)
     pad  = max(0, inner_w - vlen - 2)   # -2 for the 1-space padding each side
-    return f"{used_bg}{LGREY}Γöé{R}{used_bg} {content}{' '*pad} {LGREY}Γöé{R}"
+    return f"{used_bg}{LGREY}│{R}{used_bg} {content}{' '*pad} {LGREY}│{R}"
 
 def _box_sep(inner_w: int) -> str:
-    return f"{BG}{LGREY}Γö£{'ΓöÇ'*inner_w}Γöñ{R}"
+    return f"{BG}{LGREY}├{'─'*inner_w}┤{R}"
 
 def _box_bot(inner_w: int) -> str:
-    return f"{BG}{LGREY}Γò░{'ΓöÇ'*inner_w}Γò»{R}"
+    return f"{BG}{LGREY}╚{'─'*inner_w}╝{R}"
 
 def _wrap_text(text: str, width: int) -> list[str]:
     import textwrap
@@ -359,11 +359,11 @@ def _wrap_text(text: str, width: int) -> list[str]:
 
 def _push_user_bubble(text: str):
     tw    = _W()
-    inner = tw - 2          # box inner width  (tw = Γöé + inner + Γöé)
+    inner = tw - 2          # box inner width  (tw = │ + inner + │)
     ts    = datetime.now().strftime("%H:%M")
 
     _nl()
-    _push(_box_top(inner, title=f"{BG}{GR} Γû╕ you {R}{BG}{LGREY}"))
+    _push(_box_top(inner, title=f"{BG}{GR} ◈ you {R}{BG}{LGREY}"))
     for part in text.splitlines():
         for chunk in _wrap_text(part, inner - 4):
             _push(_box_row(f"{WH}{chunk}{R}", inner, bg=BGC))
@@ -381,7 +381,7 @@ def _push_agent_header(label: str):
     ts    = datetime.now().strftime("%H:%M:%S")
     sid   = load_session().get("id", "")
     tag   = f"  {LGREY}#{sid[-5:]}{R}" if sid else ""
-    title = f"{BG}{CYB} Γ¼í paladin {R}{BG}{LGREY}"
+    title = f"{BG}{CYB} 🛡 paladin {R}{BG}{LGREY}"
     _nl()
     _push(_box_top(inner, title=title))
     sub   = f"{DIM}{label}{R}{tag}  {LGREY}{ts}{R}"
@@ -391,7 +391,7 @@ def _push_agent_header(label: str):
 def _push_agent_footer(elapsed: float):
     tw    = _W()
     inner = tw - 2
-    foot  = f"{DIM}ΓÅ▒  {elapsed:.1f}s{R}"
+    foot  = f"{DIM}⏱  {elapsed:.1f}s{R}"
     _push(_box_row(foot, inner))
     _push(_box_bot(inner))
     _nl()
@@ -399,29 +399,29 @@ def _push_agent_footer(elapsed: float):
 
 def push_ok(m):
     tw = _W(); inner = tw - 2
-    _push(_box_row(f"{GR}Γ£ô{R}  {WH}{m}{R}", inner))
+    _push(_box_row(f"{GR}✔{R}  {WH}{m}{R}", inner))
 
 def push_err(m):
     tw = _W(); inner = tw - 2
-    _push(_box_row(f"{RD}Γ£ù{R}  {WH}{m}{R}", inner))
+    _push(_box_row(f"{RD}✗{R}  {WH}{m}{R}", inner))
     _push(_box_bot(inner)); _nl()
 
 def push_warn(m):
     tw = _W(); inner = tw - 2
-    _push(_box_row(f"{YL}Γùå{R}  {WH}{m}{R}", inner))
+    _push(_box_row(f"{YL}⚠{R}  {WH}{m}{R}", inner))
 
 def push_info(m):
     tw = _W(); inner = tw - 2
-    _push(_box_row(f"{CY2}ΓÇ║{R}  {GREY}{m}{R}", inner))
+    _push(_box_row(f"{CY2}║{R}  {GREY}{m}{R}", inner))
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
-# Shield ΓÇö context engine screening (mirrors trialHack logic)
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
+# Shield — context engine screening (mirrors trialHack logic)
+# ────────────────────────────────────────────────────────────────────────────
 
-# Sensitivity levels that the engine considers flagged ΓÇö mirrors trialHack.py exactly
+# Sensitivity levels that the engine considers flagged — mirrors trialHack.py exactly
 _FLAGGED_SENSITIVITIES = {"sensitive", "critical"}
 
-# CSV output ΓÇö mirrors trialHack.py CSV_OUTPUT_PATH / CSV_FIELDNAMES
+# CSV output — mirrors trialHack.py CSV_OUTPUT_PATH / CSV_FIELDNAMES
 _CSV_OUTPUT_PATH = str(Path(__file__).resolve().parent / "paladin_shield_output.csv")
 _CSV_FIELDNAMES  = [
     "timestamp", "raw_prompt", "action_type", "target",
@@ -568,7 +568,7 @@ def screen_prompt(prompt_text: str) -> dict:
         flags   = _check_flags(ctx, pid, target)
         passed  = len(flags) == 0
 
-        # Save to CSV every time the engine runs ΓÇö mirrors trialHack behaviour
+        # Save to CSV every time the engine runs — mirrors trialHack behaviour
         _save_shield_csv(data, ctx, prompt_text)
 
         result = {
@@ -592,9 +592,9 @@ def screen_prompt(prompt_text: str) -> dict:
         return _last_screen
 
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Kiro bridge
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 def ask_and_render(prompt: str, label: str = "response", model: str = None):
     global _in_code
@@ -603,7 +603,7 @@ def ask_and_render(prompt: str, label: str = "response", model: str = None):
     if not KIRO_BIN:
         push_err("kiro CLI not found. Install from https://kiro.ai"); return
 
-    # ΓöÇΓöÇ Shield: screen the prompt through the context engine ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── Shield: screen the prompt through the context engine ─────────────────
     if HAS_ENGINE and _shield_enabled:
         result      = screen_prompt(prompt)
         tw          = _W(); inner = tw - 2
@@ -613,7 +613,7 @@ def ask_and_render(prompt: str, label: str = "response", model: str = None):
         action_type = data.get("action_type", "file_read")
         target      = data.get("target", "N/A")
 
-        # ΓöÇΓöÇ Print parsed JSON ΓÇö mirrors trialHack "-- Parsed JSON from prompt --"
+        # ── Print parsed JSON — mirrors trialHack "-- Parsed JSON from prompt --"
         _push(_box_row(f"{DIM}-- Parsed JSON from prompt --{R}", inner))
         parsed_display = json.dumps(
             {k: v for k, v in data.items() if k != "metadata"}, indent=2
@@ -622,7 +622,7 @@ def ask_and_render(prompt: str, label: str = "response", model: str = None):
             _push(_box_row(f"  {GREY}{ln}{R}", inner))
         _push(_box_row("", inner))
 
-        # ΓöÇΓöÇ Action header ΓÇö mirrors trialHack "=== ACTION 1: prompt=... ==="
+        # ── Action header — mirrors trialHack "=== ACTION 1: prompt=... ==="
         _push(_box_row(
             f"{B}=== ACTION 1:{R} "
             f"prompt={CY2}{prompt_id!r}{R}  "
@@ -630,12 +630,12 @@ def ask_and_render(prompt: str, label: str = "response", model: str = None):
             f"target={CY2}{target}{R}",
             inner
         ))
-        _push(_box_row(f"  raw_prompt       : {DIM}{prompt[:100]}{'ΓÇª' if len(prompt)>100 else ''}{R}", inner))
+        _push(_box_row(f"  raw_prompt       : {DIM}{prompt[:100]}{'…' if len(prompt)>100 else ''}{R}", inner))
         _push(_box_row(f"  sensitivity      : {WH}{result['sensitivity']}{R}", inner))
         _push(_box_row(f"  target_category  : {WH}{result['category']}{R}", inner))
 
         if result["flags"]:
-            # ΓöÇΓöÇ [FLAGGED] block ΓÇö mirrors trialHack exactly
+            # ── [FLAGGED] block — mirrors trialHack exactly
             _push(_box_row("", inner))
             _push(_box_row(
                 f"  {YL}[FLAGGED]{R} prompt '{prompt_id}' caused the following issue(s):",
@@ -644,7 +644,7 @@ def ask_and_render(prompt: str, label: str = "response", model: str = None):
             for flag in result["flags"]:
                 _push(_box_row(f"     - {GREY}{flag}{R}", inner))
 
-            # [saved] first ΓÇö then Full context JSON, mirrors trialHack order exactly
+            # [saved] first — then Full context JSON, mirrors trialHack order exactly
             _push(_box_row("", inner))
             _push(_box_row(f"  {DIM}[saved] {_CSV_OUTPUT_PATH}{R}", inner))
             _push(_box_row("", inner))
@@ -653,16 +653,16 @@ def ask_and_render(prompt: str, label: str = "response", model: str = None):
                 for ln in json.dumps(ctx_dict, indent=2).splitlines():
                     _push(_box_row(f"  {GREY}{ln}{R}", inner))
             _push(_box_bot(inner)); _nl()
-            # Flagged ΓÇö do NOT forward to Kiro, mirrors trialHack behaviour
+            # Flagged — do NOT forward to Kiro, mirrors trialHack behaviour
             return
         else:
-            # ΓöÇΓöÇ [PASS] ΓÇö mirrors trialHack exactly
+            # ── [PASS] — mirrors trialHack exactly
             _push(_box_row(
                 f"  {GR}[PASS]{R} prompt '{prompt_id}' passed -- no issues detected",
                 inner
             ))
 
-            # [saved] first ΓÇö then Full context JSON, mirrors trialHack order exactly
+            # [saved] first — then Full context JSON, mirrors trialHack order exactly
             _push(_box_row("", inner))
             _push(_box_row(f"  {DIM}[saved] {_CSV_OUTPUT_PATH}{R}", inner))
             _push(_box_row("", inner))
@@ -670,7 +670,7 @@ def ask_and_render(prompt: str, label: str = "response", model: str = None):
                 _push(_box_row(f"Full context (last action):", inner))
                 for ln in json.dumps(ctx_dict, indent=2).splitlines():
                     _push(_box_row(f"  {GREY}{ln}{R}", inner))
-    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ─────────────────────────────────────────────────────────────────────────
 
     _push_agent_header(label)
     cmd = [KIRO_BIN, "chat", "--no-interactive", prompt]
@@ -697,20 +697,20 @@ def ask_and_render(prompt: str, label: str = "response", model: str = None):
 
     _push_agent_footer(datetime.now().timestamp() - start)
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Banner
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 LOGO = [
-    " ΓûêΓûêΓûêΓûêΓûêΓûêΓòù  ΓûêΓûêΓûêΓûêΓûêΓòù ΓûêΓûêΓòù      ΓûêΓûêΓûêΓûêΓûêΓòù ΓûêΓûêΓûêΓûêΓûêΓûêΓòù ΓûêΓûêΓòùΓûêΓûêΓûêΓòù   ΓûêΓûêΓòù",
-    " ΓûêΓûêΓòöΓòÉΓòÉΓûêΓûêΓòùΓûêΓûêΓòöΓòÉΓòÉΓûêΓûêΓòùΓûêΓûêΓòæ     ΓûêΓûêΓòöΓòÉΓòÉΓûêΓûêΓòùΓûêΓûêΓòöΓòÉΓòÉΓûêΓûêΓòùΓûêΓûêΓòæΓûêΓûêΓûêΓûêΓòù  ΓûêΓûêΓòæ",
-    " ΓûêΓûêΓûêΓûêΓûêΓûêΓòöΓò¥ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓòæΓûêΓûêΓòæ     ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓòæΓûêΓûêΓòæ  ΓûêΓûêΓòæΓûêΓûêΓòæΓûêΓûêΓòöΓûêΓûêΓòù ΓûêΓûêΓòæ",
-    " ΓûêΓûêΓòöΓòÉΓòÉΓòÉΓò¥ ΓûêΓûêΓòöΓòÉΓòÉΓûêΓûêΓòæΓûêΓûêΓòæ     ΓûêΓûêΓòöΓòÉΓòÉΓûêΓûêΓòæΓûêΓûêΓòæ  ΓûêΓûêΓòæΓûêΓûêΓòæΓûêΓûêΓòæΓòÜΓûêΓûêΓòùΓûêΓûêΓòæ",
-    " ΓûêΓûêΓòæ     ΓûêΓûêΓòæ  ΓûêΓûêΓòæΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓòùΓûêΓûêΓòæ  ΓûêΓûêΓòæΓûêΓûêΓûêΓûêΓûêΓûêΓòöΓò¥ΓûêΓûêΓòæΓûêΓûêΓòæ ΓòÜΓûêΓûêΓûêΓûêΓòæ",
-    " ΓòÜΓòÉΓò¥     ΓòÜΓòÉΓò¥  ΓòÜΓòÉΓò¥ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥ΓòÜΓòÉΓò¥  ΓòÜΓòÉΓò¥ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥ ΓòÜΓòÉΓò¥ΓòÜΓòÉΓò¥  ΓòÜΓòÉΓòÉΓòÉΓò¥",
+    " ██████╗  █████╗ ██╗      █████╗ ██████╗ ██╗███╗   ██╗",
+    " ██╔══██╗██╔══██╗██║     ██╔══██╗██╔══██╗██║████╗  ██║",
+    " ██████╔╝███████║██║     ███████║██║  ██║██║██╔██╗ ██║",
+    " ██╔═══╝ ██╔══██║██║     ██╔══██║██║  ██║██║██║╚██╗██║",
+    " ██║     ██║  ██║███████╗██║  ██║██████╔╝██║██║ ╚████║",
+    " ╚═╝     ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═════╝ ╚═╝╚═╝  ╚═══╝",
 ]
 
-# ΓöÇΓöÇ box / centering helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ── box / centering helpers ────────────────────────────────────────────────────
 # Pure black bg (#0a0a0a) fills every line edge-to-edge so nothing bleeds.
 
 BG  = "\033[48;2;10;10;10m"     # #0a0a0a  true black for all content
@@ -732,34 +732,34 @@ def _fill(bg: str, width: int) -> str:
     return f"{bg}{' ' * width}\033[0m"
 
 def _box_top(inner_w: int, title: str = "", bg: str = "") -> str:
-    """Full-width top border. inner_w = terminal_width - 2 (for the two Γöé)."""
+    """Full-width top border. inner_w = terminal_width - 2 (for the two │)."""
     _bg = bg or BG
     if title:
         tlen  = _ansi_len(title)
         left  = (inner_w - tlen) // 2
         right = inner_w - tlen - left
-        return f"{_bg}{_BDRC}Γò¡{'ΓöÇ'*left}{title}{_bg}{_BDRC}{'ΓöÇ'*right}Γò«\033[0m"
-    return f"{_bg}{_BDRC}Γò¡{'ΓöÇ'*inner_w}Γò«\033[0m"
+        return f"{_bg}{_BDRC}╔{'─'*left}{title}{_bg}{_BDRC}{'─'*right}╗\033[0m"
+    return f"{_bg}{_BDRC}╔{'─'*inner_w}╗\033[0m"
 
 def _box_row(content: str, inner_w: int, bg: str = "") -> str:
     """
-    One content row ΓÇö full terminal line painted with bg, no bleed.
-    Layout:  bg Γöé bg <space> content <padding> <space> bg Γöé reset
+    One content row — full terminal line painted with bg, no bleed.
+    Layout:  bg │ bg <space> content <padding> <space> bg │ reset
     """
     _bg  = bg or BG
     used = _ansi_len(content) + 2          # 1 space each side
     pad  = max(0, inner_w - used)
     # re-apply _bg before the trailing padding and before the right border
-    return (f"{_bg}{_BDRC}Γöé{_bg} {content}"
-            f"{_bg}{' '*pad} {_BDRC}Γöé\033[0m")
+    return (f"{_bg}{_BDRC}│{_bg} {content}"
+            f"{_bg}{' '*pad} {_BDRC}│\033[0m")
 
 def _box_sep(inner_w: int, bg: str = "") -> str:
     _bg = bg or BG
-    return f"{_bg}{_BDRC}Γö£{'ΓöÇ'*inner_w}Γöñ\033[0m"
+    return f"{_bg}{_BDRC}├{'─'*inner_w}┤\033[0m"
 
 def _box_bot(inner_w: int, bg: str = "") -> str:
     _bg = bg or BG
-    return f"{_bg}{_BDRC}Γò░{'ΓöÇ'*inner_w}Γò»\033[0m"
+    return f"{_bg}{_BDRC}╚{'─'*inner_w}╝\033[0m"
 
 def _wrap_text(text: str, width: int) -> list:
     import textwrap as _tw
@@ -770,18 +770,18 @@ def _wrap_text(text: str, width: int) -> list:
 
 def _push_banner_lines():
     tw    = _W()
-    inner = tw - 2        # box interior  (Γò¡ΓöÇ INNER ΓöÇΓò«, Γöé costs 1 each side)
+    inner = tw - 2        # box interior  (╔─ INNER ─╗, │ costs 1 each side)
 
     session = load_session()
     sid  = session.get("id", "")
     proj = session.get("project", "")
     stat = session.get("status", "idle")
 
-    kiro_text = (f"{GR}Γ¼ñ  kiro connected{R}" if KIRO_BIN
-                 else f"{RD}Γùï  kiro not found{R}  {LGREY}ΓåÆ https://kiro.ai{R}")
+    kiro_text = (f"{GR}🔑  kiro connected{R}" if KIRO_BIN
+                 else f"{RD}✗  kiro not found{R}  {LGREY}→ https://kiro.ai{R}")
     sc = {"running": GR, "paused": YL, "failed": RD, "idle": LGREY}.get(stat, LGREY)
-    sess_text = (f"{LGREY}session  {R}{CYB}{sid}{R}  {LGREY}{proj}  {R}{sc}ΓùÅ {stat}{R}"
-                 if sid else f"{LGREY}no session  ┬╖  type {R}{CY}start{R}{LGREY} to begin{R}")
+    sess_text = (f"{LGREY}session  {R}{CYB}{sid}{R}  {LGREY}{proj}  {R}{sc}● {stat}{R}"
+                 if sid else f"{LGREY}no session  ·  type {R}{CY}start{R}{LGREY} to begin{R}")
 
     cmds = [
         (f"{CY}init{R}",       "Init project"),
@@ -799,15 +799,15 @@ def _push_banner_lines():
 
         (f"{CY}demo{R}",       "Attack replay demo"),
     ]
-    shortcuts = f"{DIM}/help  ┬╖  /clear  ┬╖  /session  ┬╖  /model <name>  ┬╖  /shield  ┬╖  Ctrl-C exits{R}"
+    shortcuts = f"{DIM}/help  ·  /clear  ·  /session  ·  /model <name>  ·  /shield  ·  Ctrl-C exits{R}"
 
     _nl()
-    _push(_box_top(inner, title=f"{BG}{CY} Γ¼í paladin {R}{BG}{LGREY}"))
+    _push(_box_top(inner, title=f"{BG}{CY} 🛡 paladin {R}{BG}{LGREY}"))
     _push(_box_row("", inner))
 
     for ll in LOGO:
         _push(_box_row(_center(f"{CY}{ll}{R}", inner - 2), inner))
-    tagline = f"{DIM}AI Security Agent  ┬╖  v{VERSION}  ┬╖  powered by kiro{R}"
+    tagline = f"{DIM}AI Security Agent  ·  v{VERSION}  ·  powered by kiro{R}"
     _push(_box_row(_center(tagline, inner - 2), inner))
 
     _push(_box_row("", inner))
@@ -872,14 +872,14 @@ def _push_help():
             ("version",          "Show version info"),
             ("check [prompt]",   "Run Context Engine on a prompt (trialHack)"),
 
-            ("demo",             "Attack replay ΓÇö compromised agent scenario"),
+            ("demo",             "Attack replay — compromised agent scenario"),
         ]),
         ("REPL", [
             ("/help",            "Show this help"),
             ("/clear",           "Clear screen and redraw banner"),
             ("/session",         "Show current session details"),
             ("/model <name>",    "Switch model for this session"),
-            ("/shield",          "Engine status ┬╖ /shield on|off|test"),
+            ("/shield",          "Engine status · /shield on|off|test"),
             ("Ctrl-C / Ctrl-D",  "Exit paladin"),
         ]),
     ]
@@ -895,16 +895,16 @@ def _push_help():
     _push(_box_bot(inner))
     _nl()
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Slash commands
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 def _cmd_shield(parts: list):
     """
-    /shield             ΓÇö show engine status + last screening result
-    /shield on          ΓÇö enable screening
-    /shield off         ΓÇö disable screening (prompts pass through unscreened)
-    /shield test <text> ΓÇö screen an arbitrary string right now and show result
+    /shield             — show engine status + last screening result
+    /shield on          — enable screening
+    /shield off         — disable screening (prompts pass through unscreened)
+    /shield test <text> — screen an arbitrary string right now and show result
     """
     global _shield_enabled
     tw    = _W()
@@ -918,7 +918,7 @@ def _cmd_shield(parts: list):
 
     if sub == "off":
         _shield_enabled = False
-        push_warn(f"Shield {YL}disabled{R}  ΓÇö prompts will not be screened")
+        push_warn(f"Shield {YL}disabled{R}  — prompts will not be screened")
         return
 
     if sub == "test":
@@ -933,15 +933,15 @@ def _cmd_shield(parts: list):
 
     # Default: status + last result
     _nl()
-    _push(_box_top(inner, title=f"{BG}{CYB} Γ¼í shield status {R}{BG}{LGREY}"))
+    _push(_box_top(inner, title=f"{BG}{CYB} 🛡 shield status {R}{BG}{LGREY}"))
     _push(_box_row("", inner))
 
     if not HAS_ENGINE:
-        _push(_box_row(f"  {RD}Γùå  engine not loaded{R}", inner))
+        _push(_box_row(f"  {RD}⚠  engine not loaded{R}", inner))
         _push(_box_row(f"  {GREY}{_engine_err_msg}{R}", inner))
     else:
         enabled_str = f"{GR}enabled{R}" if _shield_enabled else f"{YL}disabled{R}"
-        _push(_box_row(f"  engine  {GR}Γ£ô  loaded{R}   ┬╖   screening  {enabled_str}", inner))
+        _push(_box_row(f"  engine  {GR}✔  loaded{R}   ·   screening  {enabled_str}", inner))
 
         if _last_screen:
             _push(_box_row("", inner))
@@ -959,7 +959,7 @@ def _cmd_shield(parts: list):
 
 
 def _push_shield_result(result: dict, inner: int, text: str):
-    """Render a screen_prompt() result dict ΓÇö exact same order as trialHack run_and_display()."""
+    """Render a screen_prompt() result dict — exact same order as trialHack run_and_display()."""
     flags       = result.get("flags", [])
     error       = result.get("error")
     data        = result.get("parsed_data", {})
@@ -987,7 +987,7 @@ def _push_shield_result(result: dict, inner: int, text: str):
         inner
     ))
     if text:
-        _push(_box_row(f"  raw_prompt       : {DIM}{text[:100]}{'ΓÇª' if len(text)>100 else ''}{R}", inner))
+        _push(_box_row(f"  raw_prompt       : {DIM}{text[:100]}{'…' if len(text)>100 else ''}{R}", inner))
     _push(_box_row(f"  sensitivity      : {WH}{result.get('sensitivity','unknown')}{R}", inner))
     _push(_box_row(f"  target_category  : {WH}{result.get('category','unknown')}{R}", inner))
 
@@ -1003,7 +1003,7 @@ def _push_shield_result(result: dict, inner: int, text: str):
     else:
         _push(_box_row(f"  {GR}[PASS]{R} prompt '{prompt_id}' passed -- no issues detected", inner))
 
-    # 4. [saved] ΓÇö before Full context, mirrors trialHack
+    # 4. [saved] — before Full context, mirrors trialHack
     _push(_box_row("", inner))
     _push(_box_row(f"  {DIM}[saved] {_CSV_OUTPUT_PATH}{R}", inner))
     _push(_box_row("", inner))
@@ -1040,7 +1040,7 @@ def _handle_slash(line: str, model_ref: list):
     elif cmd == "/model":
         if len(parts) > 1:
             model_ref[0] = parts[1]
-            push_ok(f"Model ΓåÆ {B}{parts[1]}{R}")
+            push_ok(f"Model → {B}{parts[1]}{R}")
             cfg = load_config(); cfg["model"] = parts[1]; save_config(cfg)
         else:
             push_info(f"Model: {B}{model_ref[0] or 'default'}{R}")
@@ -1052,11 +1052,11 @@ def _handle_slash(line: str, model_ref: list):
         cmd_demo()
 
     else:
-        push_err(f"Unknown: {cmd}  ┬╖  type /help for commands")
+        push_err(f"Unknown: {cmd}  ·  type /help for commands")
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Commands
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 def _ask(label: str, choices: list = None, default: str = "") -> str:
     sfx = f" [{'/'.join(choices)}]" if choices else (f" [{default}]" if default else "")
@@ -1148,7 +1148,7 @@ def cmd_policy_add():
     name    = _ask("Policy name")
     desc    = _ask("Description")
     action  = _ask("Action", choices=["allow","ask","block"], default="ask")
-    thresh  = _ask("Risk threshold (0ΓÇô100)", default="50")
+    thresh  = _ask("Risk threshold (0–100)", default="50")
     pattern = _ask("Match pattern (optional)")
     pol     = {"name": name, "description": desc, "action": action,
                "threshold": int(thresh or 50), "enabled": True}
@@ -1169,7 +1169,7 @@ def cmd_policy_test():
 def cmd_config():
     cfg = load_config()
     _nl(); _push(f"  {CYB}Config{R}  {LGREY}{CONFIG_FILE}{R}")
-    _push(f"  {LGREY}{'ΓöÇ'*40}{R}")
+    _push(f"  {LGREY}{'─'*40}{R}")
     for k, v in cfg.items():
         val = f"{CY2}{v}{R}" if v is not None else f"{LGREY}not set{R}"
         _push(f"  {GREY}{k:<18}{R}{val}")
@@ -1182,7 +1182,7 @@ def cmd_config():
 
 def cmd_doctor():
     checks = [
-        ("kiro-cli",      bool(KIRO_BIN), KIRO_BIN or "not found ΓÇö https://kiro.ai"),
+        ("kiro-cli",      bool(KIRO_BIN), KIRO_BIN or "not found — https://kiro.ai"),
         ("python",        sys.version_info>=(3,9), platform.python_version()),
         ("prompt_toolkit",HAS_PT,         "ok" if HAS_PT else "pip install prompt_toolkit"),
         ("config dir",    CONFIG_DIR.exists(), str(CONFIG_DIR)),
@@ -1190,16 +1190,16 @@ def cmd_doctor():
                           "found" if (Path.cwd()/".paladin").exists() else "run: init"),
     ]
     _nl(); _push(f"  {CYB}paladin doctor{R}")
-    _push(f"  {LGREY}{'ΓöÇ'*40}{R}")
+    _push(f"  {LGREY}{'─'*40}{R}")
     for name, good, detail in checks:
-        icon = f"{GR}Γ£ô{R}" if good else f"{YL}Γùå{R}"
+        icon = f"{GR}✔{R}" if good else f"{YL}⚠{R}"
         _push(f"  {icon}  {B}{name:<18}{R}{GREY}{detail}{R}")
     _nl()
 
 def cmd_version():
     _nl()
     _push(f"  {CYB}paladin{R}  {LGREY}v{VERSION}{R}")
-    _push(f"  {GREY}python {platform.python_version()} ┬╖ {platform.system()}{R}")
+    _push(f"  {GREY}python {platform.python_version()} · {platform.system()}{R}")
     _push(f"  {GREY}kiro: {KIRO_BIN or 'not found'}{R}")
     _nl()
 
@@ -1300,9 +1300,9 @@ def cmd_check(prompt_str: str = None):
 
 
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Attack Replay / Demo Mode
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 # Scripted 4-step attack scenario data
 _DEMO_STEPS = [
@@ -1318,8 +1318,8 @@ _DEMO_STEPS = [
         "reason":      "Reading non-sensitive documentation file within project scope.",
         "risk_factors":["Read-only file access", "Non-sensitive documentation"],
         "policy":      "read_project_files",
-        "result":      "Success ΓÇö 48 lines read.",
-        "verdict":     "Routine read of a public documentation file. Risk 3 ΓÇö auto-allowed by policy read_project_files.",
+        "result":      "Success — 48 lines read.",
+        "verdict":     "Routine read of a public documentation file. Risk 3 — auto-allowed by policy read_project_files.",
     },
     {
         "step":        2,
@@ -1335,7 +1335,7 @@ _DEMO_STEPS = [
                         "Contains database passwords", "Not required for stated task",
                         "Pattern matches secret exfiltration"],
         "policy":      "deny_secret_access",
-        "verdict":     "BLOCKED ΓÇö Critical risk 94. Credential file detected. Policy deny_secret_access triggered. Agent notified.",
+        "verdict":     "BLOCKED — Critical risk 94. Credential file detected. Policy deny_secret_access triggered. Agent notified.",
     },
     {
         "step":        3,
@@ -1347,13 +1347,13 @@ _DEMO_STEPS = [
         "severity":    "critical",
         "decision":    "blocked",
         "reason":      "Access to SSH private key denied. This file provides unauthorized system access if exfiltrated.",
-        "risk_factors":["SSH private key ΓÇö provides full system access",
+        "risk_factors":["SSH private key — provides full system access",
                         "Outside project working directory",
                         "No legitimate reason to access user SSH keys",
                         "Classic exfiltration target",
                         "Previous credential access attempt on this session"],
         "policy":      "deny_secret_access",
-        "verdict":     "BLOCKED ΓÇö Risk 99. SSH private key outside project scope. Session escalated to critical threat.",
+        "verdict":     "BLOCKED — Risk 99. SSH private key outside project scope. Session escalated to critical threat.",
     },
     {
         "step":        4,
@@ -1366,12 +1366,12 @@ _DEMO_STEPS = [
         "decision":    "blocked",
         "reason":      "Destructive shell command blocked. rm -rf / would erase the entire filesystem.",
         "risk_factors":["Recursive filesystem deletion",
-                        "Targets root ΓÇö entire system",
-                        "Irreversible ΓÇö no undo possible",
+                        "Targets root — entire system",
+                        "Irreversible — no undo possible",
                         "Third blocked action this session",
                         "Session flagged as compromised agent"],
         "policy":      "deny_destructive_commands",
-        "verdict":     "BLOCKED ΓÇö Risk 100. Destructive command rm -rf / stopped before execution. Session terminated. Incident logged.",
+        "verdict":     "BLOCKED — Risk 100. Destructive command rm -rf / stopped before execution. Session terminated. Incident logged.",
     },
 ]
 
@@ -1387,7 +1387,7 @@ def _demo_risk_bar(score: int, inner: int) -> list:
         col = YL
     else:
         col = GR
-    bar = f"{col}{'Γûê' * filled}{R}{LGREY}{'Γûæ' * empty}{R}"
+    bar = f"{col}{'█' * filled}{R}{LGREY}{'░' * empty}{R}"
     return [f"  {GREY}risk{R}  {bar}  {col}{B}{score}/100{R}"]
 
 
@@ -1397,9 +1397,9 @@ def _demo_print_step(s: dict, inner: int, pause: bool):
     dec_col  = RD if blocked else GR
     dec_label = f"{B}{RD}  BLOCKED  {R}" if blocked else f"{B}{GR}  ALLOWED  {R}"
 
-    # ΓöÇΓöÇ step header ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── step header ───────────────────────────────────────────────────────────
     title = (
-        f"{BG}{LGREY}ΓöÇΓöÇ{R}{BG} "
+        f"{BG}{LGREY}──{R}{BG} "
         f"{B}{GREY}Step {s['step']}{R}{BG}  "
         f"{B}{WH}{s['headline']}{R}{BG}  "
         f"{dec_col}{dec_label}{R}"
@@ -1407,22 +1407,22 @@ def _demo_print_step(s: dict, inner: int, pause: bool):
     _nl()
     _push(_box_top(inner, title=title))
 
-    # ΓöÇΓöÇ agent thought ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── agent thought ─────────────────────────────────────────────────────────
     _push(_box_row(f"  {CY2}Kiro{R}  {IT}{GREY}\"{s['thought']}\"{R}", inner))
     _push(_box_sep(inner))
 
-    # ΓöÇΓöÇ tool call ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── tool call ─────────────────────────────────────────────────────────────
     _push(_box_row(
         f"  {GREY}tool{R}    {BG_CODE}{YL} {s['tool']} {R}   "
         f"{GREY}target{R}  {B}{WH}{s['target']}{R}",
         inner,
     ))
 
-    # ΓöÇΓöÇ risk bar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── risk bar ──────────────────────────────────────────────────────────────
     for bar_line in _demo_risk_bar(s["risk"], inner):
         _push(_box_row(bar_line, inner))
 
-    # ΓöÇΓöÇ policy ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── policy ────────────────────────────────────────────────────────────────
     _push(_box_row(
         f"  {GREY}policy{R}  {DIM}{s['policy']}{R}   "
         f"{GREY}severity{R}  {dec_col}{s['severity']}{R}",
@@ -1430,20 +1430,20 @@ def _demo_print_step(s: dict, inner: int, pause: bool):
     ))
     _push(_box_sep(inner))
 
-    # ΓöÇΓöÇ AgentShield verdict ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    shield_icon = f"{RD}Γ¢¿  SHIELD{R}" if blocked else f"{GR}Γ¢¿  SHIELD{R}"
+    # ── AgentShield verdict ───────────────────────────────────────────────────
+    shield_icon = f"{RD}🛡  SHIELD{R}" if blocked else f"{GR}🛡  SHIELD{R}"
     _push(_box_row(f"  {shield_icon}  {GREY}{s['verdict']}{R}", inner))
 
-    # ΓöÇΓöÇ risk factors (blocked only) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── risk factors (blocked only) ───────────────────────────────────────────
     if blocked and s.get("risk_factors"):
         _push(_box_sep(inner))
         _push(_box_row(f"  {GREY}Risk factors{R}", inner))
         for f in s["risk_factors"]:
-            _push(_box_row(f"    {RD}┬╖{R}  {GREY}{f}{R}", inner))
+            _push(_box_row(f"    {RD}·{R}  {GREY}{f}{R}", inner))
 
-    # ΓöÇΓöÇ execution result (allowed only) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── execution result (allowed only) ──────────────────────────────────────
     if not blocked and s.get("result"):
-        _push(_box_row(f"  {GR}Γ£ô{R}  {GREY}{s['result']}{R}", inner))
+        _push(_box_row(f"  {GR}✔{R}  {GREY}{s['result']}{R}", inner))
 
     _push(_box_bot(inner))
 
@@ -1455,7 +1455,7 @@ def _demo_print_step(s: dict, inner: int, pause: bool):
         # Print what we have so far, then wait
         _demo_flush()
         try:
-            input(f"\n  {LGREY}Press Enter to continueΓÇª{R}  ")
+            input(f"\n  {LGREY}Press Enter to continue…{R}  ")
         except (EOFError, KeyboardInterrupt):
             pass
         _lines.clear()
@@ -1472,16 +1472,16 @@ def cmd_demo():
     """
     Attack Replay / Demo Mode.
     Replays a scripted 4-step compromised-agent scenario:
-      read benign file ΓåÆ read .env ΓåÆ steal SSH key ΓåÆ run rm -rf /
+      read benign file → read .env → steal SSH key → run rm -rf /
     """
     import time
 
     inner = _W() - 2
 
-    # ΓöÇΓöÇ Intro banner ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── Intro banner ──────────────────────────────────────────────────────────
     _lines.clear()
     _nl()
-    _push(_box_top(inner, title=f"{BG}{B}{RD} ΓÜí ATTACK REPLAY ΓÇö DEMO MODE {R}{BG}{LGREY}"))
+    _push(_box_top(inner, title=f"{BG}{B}{RD} ⚡ ATTACK REPLAY — DEMO MODE {R}{BG}{LGREY}"))
     _push(_box_row("", inner))
     _push(_box_row(
         _center(f"{B}{WH}Compromised Agent Scenario{R}", inner - 2), inner
@@ -1531,12 +1531,12 @@ def cmd_demo():
     _demo_flush()
 
     try:
-        input(f"  {LGREY}Press Enter to start replayΓÇª{R}  ")
+        input(f"  {LGREY}Press Enter to start replay…{R}  ")
     except (EOFError, KeyboardInterrupt):
         return
     _lines.clear()
 
-    # ΓöÇΓöÇ Play each step ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── Play each step ────────────────────────────────────────────────────────
     for i, step in enumerate(_DEMO_STEPS):
         is_last = i == len(_DEMO_STEPS) - 1
         # Step 1 auto-advances (just a brief pause), blocked steps wait for Enter
@@ -1545,19 +1545,19 @@ def cmd_demo():
         _demo_print_step(step, inner, pause=pause_for_input)
 
         if not pause_for_input:
-            # Auto-advance ΓÇö short delay then clear and move on
+            # Auto-advance — short delay then clear and move on
             _demo_flush()
             time.sleep(1.8)
             _lines.clear()
 
-    # ΓöÇΓöÇ Summary ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── Summary ───────────────────────────────────────────────────────────────
     _lines.clear()
     blocked_count = sum(1 for s in _DEMO_STEPS if s["decision"] == "blocked")
     allowed_count = sum(1 for s in _DEMO_STEPS if s["decision"] == "allowed")
     peak_risk     = max(s["risk"] for s in _DEMO_STEPS)
 
     _nl()
-    _push(_box_top(inner, title=f"{BG}{B}{GR} ≡ƒ¢í  ATTACK CONTAINED {R}{BG}{LGREY}"))
+    _push(_box_top(inner, title=f"{BG}{B}{GR} ⚡  ATTACK CONTAINED {R}{BG}{LGREY}"))
     _push(_box_row("", inner))
     _push(_box_row(
         _center(f"{B}{WH}Paladin AgentShield stopped every malicious action.{R}", inner - 2),
@@ -1592,7 +1592,7 @@ def cmd_demo():
     for s in _DEMO_STEPS:
         blocked  = s["decision"] == "blocked"
         dec_col  = RD if blocked else GR
-        icon     = f"{RD}Γ£ò{R}" if blocked else f"{GR}Γ£ô{R}"
+        icon     = f"{RD}✘{R}" if blocked else f"{GR}✔{R}"
         risk_col = RD if s["risk"] >= 76 else (YL if s["risk"] >= 41 else GR)
         _push(_box_row(
             f"  {icon}  {GREY}{s['tool']:<16}{R}"
@@ -1607,7 +1607,7 @@ def cmd_demo():
     _push(_box_row("", inner))
 
     # Damage avoided
-    _push(_box_row(f"  {RD}Γùå  Damage Avoided{R}", inner))
+    _push(_box_row(f"  {RD}⚠  Damage Avoided{R}", inner))
     _push(_box_row(f"  {GREY}Complete credential theft + full disk wipe{R}", inner))
     _push(_box_row("", inner))
     _push(_box_bot(inner))
@@ -1615,9 +1615,9 @@ def cmd_demo():
 
     _demo_flush()
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Dispatcher
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 def _dispatch(args: list) -> bool:
     if not args: return False
@@ -1649,15 +1649,15 @@ def _dispatch(args: list) -> bool:
     else: return False
     return True
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # TUI layout
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 def _make_app(model_ref: list):
     """Simple CLI - no complex TUI needed"""
     return None
 
-    # ΓöÇΓöÇ output pane ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── output pane ───────────────────────────────────────────────────────────
     # FormattedTextControl + ANSI() renders escape codes correctly.
     def _output_text():
         if not _lines:
@@ -1698,19 +1698,19 @@ def _make_app(model_ref: list):
         style="bg:#0a0a0a",  # Explicit black background
     )
 
-    # ΓöÇΓöÇ status bar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── status bar ────────────────────────────────────────────────────────────
     def _sb_text():
         s   = load_session()
         sid = s.get("id",""); proj = s.get("project",""); stat = s.get("status","")
         sc  = {"running":"ansigreen","paused":"ansiyellow","failed":"ansired"}.get(stat,"#6e7681")
         mid = f"  {proj}  #{sid[-5:]}" if sid else "  no session"
         kc  = "ansigreen" if KIRO_BIN else "ansired"
-        ki  = "Γ¼ñ kiro" if KIRO_BIN else "Γùï kiro"
+        ki  = "🔑 kiro" if KIRO_BIN else "✗ kiro"
         return HTML(
-            f"<style bg='#0a0a0a' fg='#58c8ff'><b>  Γ¼í paladin</b></style>"
+            f"<style bg='#0a0a0a' fg='#58c8ff'><b>  🛡 paladin</b></style>"
             f"<style bg='#0a0a0a' fg='#484f58'>  v{VERSION}</style>"
             f"<style bg='#0a0a0a' fg='#6e7681'>{mid}</style>"
-            f"<style bg='#0a0a0a' fg='{sc}'>  ΓùÅ {stat}</style>"
+            f"<style bg='#0a0a0a' fg='{sc}'>  ● {stat}</style>"
             f"<style bg='#0a0a0a' fg='#484f58'>   {model_ref[0] or 'default'}  </style>"
             f"<style bg='#0a0a0a' fg='{kc}'>  {ki}  </style>"
         )
@@ -1720,10 +1720,10 @@ def _make_app(model_ref: list):
         height=1, style="bg:#0a0a0a",
     )
 
-    # ΓöÇΓöÇ thin separator ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    sep = Window(height=1, char="ΓöÇ", style="fg:#404858 bg:#0a0a0a")
+    # ── thin separator ────────────────────────────────────────────────────────
+    sep = Window(height=1, char="─", style="fg:#404858 bg:#0a0a0a")
 
-    # ΓöÇΓöÇ input buffer ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── input buffer ──────────────────────────────────────────────────────────
     hist = FileHistory(str(HISTORY_FILE)) if HISTORY_FILE.parent.exists() else InMemoryHistory()
     buf  = Buffer(name="main", history=hist,
                   auto_suggest=AutoSuggestFromHistory(), multiline=False)
@@ -1732,7 +1732,7 @@ def _make_app(model_ref: list):
         s   = load_session()
         sid = s.get("id","")
         tag = f"#{sid[-5:]} " if sid else ""
-        return HTML(f"<ansicyan><b>  Γ¼í {tag}Γ¥» </b></ansicyan>")
+        return HTML(f"<ansicyan><b>  🛡 {tag}❯ </b></ansicyan>")
 
     input_win = Window(
         content=BufferControl(buf, input_processors=[BeforeInput(_prompt_text)],
@@ -1740,7 +1740,7 @@ def _make_app(model_ref: list):
         height=1, style="bg:#0a0a0a fg:#d0d8e8",
     )
 
-    # ΓöÇΓöÇ scroll helper ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── scroll helper ─────────────────────────────────────────────────────────
     def _scroll(delta: int):
         global _scroll_pos, _user_scrolled
         if not _lines:
@@ -1772,7 +1772,7 @@ def _make_app(model_ref: list):
         _scroll_pos = len(_lines)  # Will be clamped in _scroll logic
         _app.invalidate()
 
-    # ΓöÇΓöÇ key bindings ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── key bindings ──────────────────────────────────────────────────────────
     kb = KeyBindings()
 
     @kb.add("enter")
@@ -1829,10 +1829,10 @@ def _make_app(model_ref: list):
     @kb.add("end")
     def _scroll_end(event): _scroll_to_bottom()
 
-    # ΓöÇΓöÇ layout and app ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── layout and app ─────────────────────────────────────────────────────────
 
-    # ΓöÇΓöÇ layout and app ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    sep = Window(height=1, char="ΓöÇ", style="fg:#404858 bg:#0a0a0a")
+    # ── layout and app ─────────────────────────────────────────────────────────
+    sep = Window(height=1, char="─", style="fg:#404858 bg:#0a0a0a")
 
     layout = Layout(HSplit([output_window, statusbar, sep, input_win]),
                     focused_element=input_win)
@@ -1851,7 +1851,7 @@ def _make_app(model_ref: list):
     
     return app
 
-    # ΓöÇΓöÇ key bindings ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── key bindings ──────────────────────────────────────────────────────────
     kb = KeyBindings()
 
     @kb.add("enter")
@@ -1902,7 +1902,7 @@ def _make_app(model_ref: list):
         else:
             _scroll(3)
 
-    # ΓöÇΓöÇ layout & style ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # ── layout & style ────────────────────────────────────────────────────────
     layout = Layout(HSplit([output_window, statusbar, sep, input_win]),
                     focused_element=input_win)
 
@@ -1918,9 +1918,9 @@ def _make_app(model_ref: list):
     return Application(layout=layout, key_bindings=kb, style=style,
                        full_screen=True, mouse_support=True, refresh_interval=0.08)
 
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 # Entry
-# ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
+# ────────────────────────────────────────────────────────────────────────────
 
 def _run_backend():
     """
@@ -1943,6 +1943,16 @@ def _run_backend():
 
 
 def main():
+    # ── Windows UTF-8 console ──────────────────────────────────────────────────
+    import io as _io
+    if sys.platform == 'win32':
+        if hasattr(sys.stdout, 'reconfigure'):
+            try:
+                sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+                sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+            except Exception:
+                pass
+    # ─────────────────────────────────────────────────────────────────────────
     global _app
     _mkdirs()
     args = sys.argv[1:]
@@ -1980,7 +1990,7 @@ def main():
         try:
             while True:
                 try:
-                    user_input = input("Γ¼í Γ¥» ").strip()
+                    user_input = input("🛡 ❯ ").strip()
                     if not user_input:
                         continue
 
