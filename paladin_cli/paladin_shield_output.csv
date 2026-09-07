@@ -1,2 +1,2 @@
 timestamp,raw_prompt,action_type,target,agent,sensitivity,target_category,cwd
-2026-09-07T05:17:38,"python trialHack.py ""prompt=req-001 agent=kiro action=file_read target=/home/user/project/src/main.py cwd=/home/user/project os=linux shell=bash parent=kiro-cli user=jaskaran project=/home/user/project""",file_read,/home/user/project/src/main.py,kiro,normal,source_code,/home/user/project
+2026-09-07T12:21:23,high,file_read,N/A,unknown,normal,unknown,

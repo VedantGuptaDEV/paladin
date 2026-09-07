@@ -125,6 +125,43 @@ def save_session(data: dict):
     with open(SESSION_FILE, "w") as f: json.dump(data, f, indent=2)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Prompt log  (every input → trialHack_output.csv)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+_LOG_CSV = (Path(__file__).resolve().parent.parent
+            / "Engine" / "Context_Engine" / "trialHack_output.csv")
+
+_LOG_FIELDNAMES = [
+    "timestamp", "raw_prompt", "action_type",
+    "target", "agent", "sensitivity", "target_category", "cwd",
+]
+
+def _log_to_csv(raw_prompt: str, action_type: str = "chat",
+                target: str = "", agent: str = "paladin_cli",
+                sensitivity: str = "normal", target_category: str = "",
+                cwd: str = "") -> None:
+    """Append one row to the persistent prompt log CSV."""
+    row = {
+        "timestamp":       datetime.now().isoformat(timespec="seconds"),
+        "raw_prompt":      raw_prompt,
+        "action_type":     action_type,
+        "target":          target,
+        "agent":           agent,
+        "sensitivity":     sensitivity,
+        "target_category": target_category,
+        "cwd":             cwd or str(Path.cwd()),
+    }
+    file_exists = _LOG_CSV.is_file()
+    try:
+        with open(_LOG_CSV, "a", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=_LOG_FIELDNAMES)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row)
+    except Exception:
+        pass  # never crash the CLI over a log write
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Output buffer
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -1758,6 +1795,11 @@ def main():
         # Handle command directly
         _lines.clear()  # Clear any previous content
         
+        # Log every prompt to CSV (check cmd logs its own via trialhack)
+        _cmd0 = args[0].lower() if args else ""
+        if _cmd0 != "check":
+            _log_to_csv(" ".join(args), action_type=_cmd0 or "chat")
+        
         if not _dispatch(args):
             # If not a built-in command, treat as a prompt
             ask_and_render(" ".join(args), model=model_ref[0])
@@ -1789,6 +1831,12 @@ def main():
                     
                     # Clear previous output
                     _lines.clear()
+                    
+                    # Log every prompt to CSV (check cmd logs its own via trialhack)
+                    _args = user_input.split()
+                    _cmd0 = _args[0].lower() if _args else ""
+                    if _cmd0 != "check":
+                        _log_to_csv(user_input, action_type=_cmd0 or "chat")
                     
                     # Handle the input
                     if not _dispatch(user_input.split()):
