@@ -65,7 +65,7 @@ try:
     _RISK_OK = True
 except ImportError:
     try:
-        import RiskEngine as _risk           # fallback when already in Risk_Engine dir
+        import Risk_Engine.RiskEngine as _risk           # fallback when already in Risk_Engine dir
         _RISK_OK = True
     except ImportError:
         _RISK_OK = False
