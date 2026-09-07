@@ -1,3 +1,0 @@
-# hellos
-
-Hello! 👋
