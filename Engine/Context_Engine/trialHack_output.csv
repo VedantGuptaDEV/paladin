@@ -7,3 +7,10 @@ timestamp,raw_prompt,action_type,target,agent,sensitivity,target_category,cwd,ri
 2026-09-07T22:43:15,make a file Test.py,make,,paladin_cli,normal,,C:\Users\Vedant Gupta\paladin\paladin_cli,37.39
 2026-09-07T22:44:15,delete Test.py,delete,,paladin_cli,normal,,C:\Users\Vedant Gupta\paladin\paladin_cli,45.27
 2026-09-07T23:27:05,make Readme.md,make,,paladin_cli,normal,,C:\Users\Vedant Gupta\paladin\paladin_cli,33.69
+2026-09-08T05:07:12,yo whats up with it,yo,,paladin_cli,normal,,/home/jaskaran/Documents/paladin_test/paladin/paladin_cli,
+2026-09-08T05:08:20,yo whats up with it,yo,,paladin_cli,normal,,/home/jaskaran/Documents/paladin_test/paladin/paladin_cli,
+2026-09-08T05:08:32,yo whats up with it,yo,,paladin_cli,normal,,/home/jaskaran/Documents/paladin_test/paladin/paladin_cli,
+2026-09-08T05:09:16,yo,yo,,paladin_cli,normal,,/home/jaskaran/Documents/paladin_test/paladin/paladin_cli,
+2026-09-08T05:11:44,yo whats up with it,yo,,paladin_cli,normal,,/home/jaskaran/Documents/paladin_test/paladin/paladin_cli,16.42
+2026-09-08T05:18:14,testing just,testing,,paladin_cli,normal,,/home/jaskaran/Documents/paladin_test/paladin/paladin_cli,42.50
+2026-09-08T05:20:02,hello wsp,hello,,paladin_cli,normal,,/home/jaskaran/Documents/paladin_test/paladin/paladin_cli,24.86

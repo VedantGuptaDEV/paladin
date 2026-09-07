@@ -1975,7 +1975,7 @@ def _run_backend():
     trialHack_output.csv.  Backend.py must be executed from the engine/ directory
     because it uses a relative path to find the CSV and imports Risk_Engine.
     """
-    engine_dir = str(Path(__file__).resolve().parent.parent / "engine")
+    engine_dir = str(Path(__file__).resolve().parent.parent / "Engine")
     backend_py = str(Path(engine_dir) / "Backend.py")
     try:
         result = subprocess.run(
