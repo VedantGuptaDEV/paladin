@@ -2,3 +2,5 @@ timestamp,raw_prompt,action_type,target,agent,sensitivity,target_category,cwd,ri
 2026-09-07T22:41:56,run this shell command: echo hello,shell,echo hello,kiro,warn,55.30,C:\Users\Vedant Gupta\paladin,55.30
 2026-09-07T22:43:38,make a file Test.py,write,create,kiro,safe,N/A,C:\Users\Vedant Gupta\paladin\engine,N/A
 2026-09-07T22:44:37,delete Test.py,glob,Finding **/Test.py,kiro,safe,N/A,C:\Users\Vedant Gupta\paladin\engine,N/A
+2026-09-07T23:27:50,make Readme.md,read,Reading listing engine,kiro,safe,N/A,C:\Users\Vedant Gupta\paladin\engine,N/A
+2026-09-07T23:27:54,make Readme.md,read,"Reading kiro_guard.py:1, flagger.py:1, RiskEngine.py:1, Backend.py:1, requirements.txt:1",kiro,safe,N/A,C:\Users\Vedant Gupta\paladin\engine,N/A
