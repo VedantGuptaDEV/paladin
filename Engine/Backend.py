@@ -49,8 +49,8 @@ prompt = uin["raw_prompt"].tolist()[-1]
 risk_fns = risk.risk_score(prompt)
 print(f"risk score: {risk_fns[1]}")
 
-# Tier 2 check
-t2_out = risk.tier2(risk_fns[0])
+# Tier 2 check — pass the prompt so flag() can forward it if the user approves
+t2_out = risk.tier2(risk_fns[0], prompt)
 
 if t2_out == 0:
     # Safe — forward the prompt to kiro-cli via paladin's renderer

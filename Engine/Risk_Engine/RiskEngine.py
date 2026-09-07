@@ -39,15 +39,15 @@ def tier3(j_loc:dict): #the string input is the file path of the json file from 
 null2green=0.5
 green2orange=0.7
 
-def tier2(risk_factor:float):
-    if risk_factor<null2green:
+def tier2(risk_factor: float, prompt: str = ""):
+    if risk_factor < null2green:
         # Safe — caller (Backend.py) will forward prompt to kiro-cli
         return 0
-    elif null2green<=risk_factor and risk_factor<=green2orange:
+    elif null2green <= risk_factor <= green2orange:
         print("send to LLM")
         return 1
     else:
-        f.flag()
+        f.flag(prompt)
         return -1
 
 
