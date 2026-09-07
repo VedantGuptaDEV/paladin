@@ -63,7 +63,7 @@ CRITICAL_PATTERNS: list[str] = [
 # Any path matching these → sensitive (but not critical)
 SENSITIVE_PATTERNS: list[str] = [
     # SSH config (not keys)
-    r"[/\\]\.ssh[/\\]", r"ssh_config$", r"sshd_config$", r"known_hosts",
+    r"[/\\]\.ssh[/\\]?", r"ssh_config$", r"sshd_config$", r"known_hosts",
     # Shell history
     r"\.bash_history$", r"\.zsh_history$", r"\.sh_history$",
     # Shell profiles
@@ -95,7 +95,7 @@ _CATEGORY_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"[/\\]\.aws[/\\]|[/\\]\.gcloud[/\\]|[/\\]\.kube[/\\]|service[_-]?account", re.I), "cloud_credential"),
     (re.compile(r"\.env$|\.env\.|credentials?\.json|secrets?\.json|\.netrc|api[_-]?key|token|password", re.I), "credential"),
     # SSH
-    (re.compile(r"[/\\]\.ssh[/\\]|ssh_config|sshd_config|known_hosts|authorized_keys", re.I), "ssh"),
+    (re.compile(r"[/\\]\.ssh[/\\]?|ssh_config|sshd_config|known_hosts|authorized_keys", re.I), "ssh"),
     # System
     (re.compile(r"^/etc/|^/proc/|^/sys/|^C:[/\\]Windows[/\\]", re.I), "system"),
     # Shell

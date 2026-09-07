@@ -4,7 +4,7 @@ paladin — AI security agent for your terminal.
 Full-screen TUI: scrollable output + sticky status bar + sticky input.
 """
 
-import os, sys, shutil, subprocess, json, platform, re, threading
+import os, sys, shutil, subprocess, json, platform, re, threading, csv
 from pathlib import Path
 from datetime import datetime
 
@@ -17,6 +17,28 @@ try:
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False
+
+# ── paladin-engine (context screening) ────────────────────────────────────────
+try:
+    import sys as _sys, os as _os
+    # Make the local paladin-engine importable when not pip-installed
+    _engine_root = str(Path(__file__).resolve().parent.parent / "paladin-engine")
+    if _engine_root not in _sys.path:
+        _sys.path.insert(0, _engine_root)
+
+    from paladin.context.engine import ContextEngine
+    from paladin.context.history import ActionHistory
+    from paladin.schemas.action import AgentAction
+
+    _engine         = ContextEngine(action_history=ActionHistory())
+    _shield_enabled = True
+    _last_screen    = None   # stores the last ScreenResult (dict) for /shield
+    HAS_ENGINE = True
+except Exception as _engine_err:
+    HAS_ENGINE      = False
+    _shield_enabled = False
+    _last_screen    = None
+    _engine_err_msg = str(_engine_err)
 
 # ─────────────────────────────────────────────────────────────────────────────
 VERSION      = "0.1.0"
@@ -319,6 +341,184 @@ def push_info(m):
     _push(_box_row(f"{CY2}›{R}  {GREY}{m}{R}", inner))
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Shield — context engine screening (mirrors trialHack logic)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Sensitivity levels that the engine considers flagged — mirrors trialHack.py exactly
+_FLAGGED_SENSITIVITIES = {"sensitive", "critical"}
+
+# CSV output — mirrors trialHack.py CSV_OUTPUT_PATH / CSV_FIELDNAMES
+_CSV_OUTPUT_PATH = str(Path(__file__).resolve().parent / "paladin_shield_output.csv")
+_CSV_FIELDNAMES  = [
+    "timestamp", "raw_prompt", "action_type", "target",
+    "agent", "sensitivity", "target_category", "cwd",
+]
+
+# Key mapping mirrors trialHack.py KEY_MAP
+_KEY_MAP = {
+    "prompt":  "prompt",
+    "agent":   "agent",
+    "action":  "action_type",
+    "target":  "target",
+    "cwd":     "cwd",
+    "os":      "os",
+    "shell":   "shell",
+    "parent":  "parent_process",
+    "user":    "user",
+    "project": "project_root",
+    "task":    "task_context",
+    "command": "command",
+}
+
+
+def _parse_kv_prompt(text: str) -> dict:
+    """
+    Parse a key=value or key="quoted value" string into a structured dict.
+    Falls back to treating the whole string as task_context.
+    Mirrors trialHack.py parse_prompt_to_json().
+    """
+    pattern = r'(\w+)=(?:"([^"]*)"|([\S]+))'
+    matches = re.findall(pattern, text)
+    raw = {}
+    for key, quoted, plain in matches:
+        raw[key.lower()] = quoted if quoted else plain
+
+    structured = {}
+    for short_key, value in raw.items():
+        field = _KEY_MAP.get(short_key, short_key)
+        structured[field] = value
+
+    # If nothing was parsed as key=value treat whole text as task_context
+    if not structured:
+        structured["task_context"] = text
+
+    structured.setdefault("prompt",      "cli-input")
+    structured.setdefault("action_type", "file_read")
+    structured.setdefault("metadata",    {})
+    return structured
+
+
+def _build_agent_action(data: dict, prompt_text: str) -> "AgentAction":
+    """Build an AgentAction from parsed data + live environment context."""
+    return AgentAction(
+        action_id      = data.get("prompt", "cli-input"),
+        action_type    = data.get("action_type", "file_read"),
+        target         = data.get("target"),
+        command        = data.get("command"),
+        task_context   = data.get("task_context", prompt_text),
+        agent          = data.get("agent", "kiro"),
+        parent_process = data.get("parent_process", "paladin-cli"),
+        cwd            = data.get("cwd", str(Path.cwd())),
+        os             = data.get("os", platform.system().lower()),
+        shell          = data.get("shell"),
+        project_root   = data.get("project_root"),
+        user           = data.get("user", os.environ.get("USERNAME") or os.environ.get("USER")),
+        metadata       = data.get("metadata", {}),
+    )
+
+
+def _check_flags(ctx, prompt_id: str, target: str) -> list:
+    """
+    Return a list of human-readable flag reasons.
+    Empty list = clean. Exact wording mirrors trialHack.py check_flags().
+    """
+    reasons = []
+    sensitivity = str(ctx.sensitivity).lower()
+    if sensitivity in _FLAGGED_SENSITIVITIES:
+        reasons.append(
+            f"sensitivity is '{ctx.sensitivity}' -- prompt '{prompt_id}' "
+            f"tried to access a {ctx.target_category} resource: {target!r}"
+        )
+    if ctx.is_outside_project:
+        reasons.append(
+            f"target is outside the project root -- prompt '{prompt_id}' "
+            f"accessed {target!r} which is not under the project directory"
+        )
+    return reasons
+
+
+def _save_shield_csv(data: dict, ctx, raw_prompt: str) -> str:
+    """Append a result row to paladin_shield_output.csv, mirrors trialHack save_to_csv()."""
+    row = {
+        "timestamp":       datetime.now().isoformat(timespec="seconds"),
+        "raw_prompt":      raw_prompt,
+        "action_type":     data.get("action_type", "unknown"),
+        "target":          data.get("target", "N/A"),
+        "agent":           data.get("agent", "unknown"),
+        "sensitivity":     str(ctx.sensitivity),
+        "target_category": str(ctx.target_category),
+        "cwd":             data.get("cwd", ""),
+    }
+    file_exists = Path(_CSV_OUTPUT_PATH).is_file()
+    with open(_CSV_OUTPUT_PATH, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=_CSV_FIELDNAMES)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(row)
+    return _CSV_OUTPUT_PATH
+
+
+def screen_prompt(prompt_text: str) -> dict:
+    """
+    Run the context engine over a plain-text prompt.
+
+    Returns a dict:
+        {
+          "passed":      bool,
+          "flags":       list[str],   # human-readable reasons if flagged
+          "sensitivity": str,
+          "category":    str,
+          "outside":     bool,
+          "ctx":         ActionContext | None,
+          "parsed_data": dict,        # structured JSON parsed from prompt
+          "ctx_dict":    dict | None, # ctx.to_dict() for full JSON dump
+        }
+
+    If the engine is not available, always returns passed=True so the
+    CLI degrades gracefully.
+    """
+    global _last_screen
+
+    if not HAS_ENGINE or not _shield_enabled:
+        return {"passed": True, "flags": [], "sensitivity": "unknown",
+                "category": "unknown", "outside": False, "ctx": None,
+                "parsed_data": {}, "ctx_dict": None}
+
+    try:
+        data   = _parse_kv_prompt(prompt_text)
+        action = _build_agent_action(data, prompt_text)
+        ctx    = _engine.build_context(action)
+
+        target  = data.get("target", "N/A")
+        pid     = data.get("prompt", "cli-input")
+        flags   = _check_flags(ctx, pid, target)
+        passed  = len(flags) == 0
+
+        # Save to CSV every time the engine runs — mirrors trialHack behaviour
+        _save_shield_csv(data, ctx, prompt_text)
+
+        result = {
+            "passed":      passed,
+            "flags":       flags,
+            "sensitivity": str(ctx.sensitivity),
+            "category":    str(ctx.target_category),
+            "outside":     ctx.is_outside_project,
+            "ctx":         ctx,
+            "parsed_data": data,
+            "ctx_dict":    ctx.to_dict() if hasattr(ctx, "to_dict") else None,
+        }
+        _last_screen = result
+        return result
+
+    except Exception as exc:
+        _last_screen = {"passed": True, "flags": [], "sensitivity": "error",
+                        "category": "unknown", "outside": False, "ctx": None,
+                        "parsed_data": {}, "ctx_dict": None,
+                        "error": str(exc)}
+        return _last_screen
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Kiro bridge
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -328,6 +528,75 @@ def ask_and_render(prompt: str, label: str = "response", model: str = None):
 
     if not KIRO_BIN:
         push_err("kiro CLI not found. Install from https://kiro.ai"); return
+
+    # ── Shield: screen the prompt through the context engine ─────────────────
+    if HAS_ENGINE and _shield_enabled:
+        result      = screen_prompt(prompt)
+        tw          = _W(); inner = tw - 2
+        data        = result.get("parsed_data", {})
+        ctx_dict    = result.get("ctx_dict")
+        prompt_id   = data.get("prompt", "cli-input")
+        action_type = data.get("action_type", "file_read")
+        target      = data.get("target", "N/A")
+
+        # ── Print parsed JSON — mirrors trialHack "-- Parsed JSON from prompt --"
+        _push(_box_row(f"{DIM}-- Parsed JSON from prompt --{R}", inner))
+        parsed_display = json.dumps(
+            {k: v for k, v in data.items() if k != "metadata"}, indent=2
+        )
+        for ln in parsed_display.splitlines():
+            _push(_box_row(f"  {GREY}{ln}{R}", inner))
+        _push(_box_row("", inner))
+
+        # ── Action header — mirrors trialHack "=== ACTION 1: prompt=... ==="
+        _push(_box_row(
+            f"{B}=== ACTION 1:{R} "
+            f"prompt={CY2}{prompt_id!r}{R}  "
+            f"type={CY2}{action_type}{R}  "
+            f"target={CY2}{target}{R}",
+            inner
+        ))
+        _push(_box_row(f"  raw_prompt       : {DIM}{prompt[:100]}{'…' if len(prompt)>100 else ''}{R}", inner))
+        _push(_box_row(f"  sensitivity      : {WH}{result['sensitivity']}{R}", inner))
+        _push(_box_row(f"  target_category  : {WH}{result['category']}{R}", inner))
+
+        if result["flags"]:
+            # ── [FLAGGED] block — mirrors trialHack exactly
+            _push(_box_row("", inner))
+            _push(_box_row(
+                f"  {YL}[FLAGGED]{R} prompt '{prompt_id}' caused the following issue(s):",
+                inner
+            ))
+            for flag in result["flags"]:
+                _push(_box_row(f"     - {GREY}{flag}{R}", inner))
+
+            # [saved] first — then Full context JSON, mirrors trialHack order exactly
+            _push(_box_row("", inner))
+            _push(_box_row(f"  {DIM}[saved] {_CSV_OUTPUT_PATH}{R}", inner))
+            _push(_box_row("", inner))
+            if ctx_dict:
+                _push(_box_row(f"Full context (last action):", inner))
+                for ln in json.dumps(ctx_dict, indent=2).splitlines():
+                    _push(_box_row(f"  {GREY}{ln}{R}", inner))
+            _push(_box_bot(inner)); _nl()
+            # Flagged — do NOT forward to Kiro, mirrors trialHack behaviour
+            return
+        else:
+            # ── [PASS] — mirrors trialHack exactly
+            _push(_box_row(
+                f"  {GR}[PASS]{R} prompt '{prompt_id}' passed -- no issues detected",
+                inner
+            ))
+
+            # [saved] first — then Full context JSON, mirrors trialHack order exactly
+            _push(_box_row("", inner))
+            _push(_box_row(f"  {DIM}[saved] {_CSV_OUTPUT_PATH}{R}", inner))
+            _push(_box_row("", inner))
+            if ctx_dict:
+                _push(_box_row(f"Full context (last action):", inner))
+                for ln in json.dumps(ctx_dict, indent=2).splitlines():
+                    _push(_box_row(f"  {GREY}{ln}{R}", inner))
+    # ─────────────────────────────────────────────────────────────────────────
 
     _push_agent_header(label)
     cmd = [KIRO_BIN, "chat", "--no-interactive", prompt]
@@ -454,7 +723,7 @@ def _push_banner_lines():
         (f"{CY}doctor{R}",     "Health check"),
         (f"{CY}version{R}",    "Version info"),
     ]
-    shortcuts = f"{DIM}/help  ·  /clear  ·  /session  ·  /model <name>  ·  Ctrl-C exits{R}"
+    shortcuts = f"{DIM}/help  ·  /clear  ·  /session  ·  /model <name>  ·  /shield  ·  Ctrl-C exits{R}"
 
     _nl()
     _push(_box_top(inner, title=f"{BG}{CY} ⬡ paladin {R}{BG}{LGREY}"))
@@ -531,6 +800,7 @@ def _push_help():
             ("/clear",           "Clear screen and redraw banner"),
             ("/session",         "Show current session details"),
             ("/model <name>",    "Switch model for this session"),
+            ("/shield",          "Engine status · /shield on|off|test"),
             ("Ctrl-C / Ctrl-D",  "Exit paladin"),
         ]),
     ]
@@ -549,6 +819,122 @@ def _push_help():
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Slash commands
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _cmd_shield(parts: list):
+    """
+    /shield             — show engine status + last screening result
+    /shield on          — enable screening
+    /shield off         — disable screening (prompts pass through unscreened)
+    /shield test <text> — screen an arbitrary string right now and show result
+    """
+    global _shield_enabled
+    tw    = _W()
+    inner = tw - 2
+    sub   = parts[1].lower() if len(parts) > 1 else ""
+
+    if sub == "on":
+        _shield_enabled = True
+        push_ok(f"Shield {GR}enabled{R}")
+        return
+
+    if sub == "off":
+        _shield_enabled = False
+        push_warn(f"Shield {YL}disabled{R}  — prompts will not be screened")
+        return
+
+    if sub == "test":
+        test_text = " ".join(parts[2:]) if len(parts) > 2 else ""
+        if not test_text:
+            push_err("/shield test <prompt text>"); return
+        if not HAS_ENGINE:
+            push_err(f"paladin-engine not available: {_engine_err_msg}"); return
+        result = screen_prompt(test_text)
+        _push_shield_result(result, inner, test_text)
+        return
+
+    # Default: status + last result
+    _nl()
+    _push(_box_top(inner, title=f"{BG}{CYB} ⬡ shield status {R}{BG}{LGREY}"))
+    _push(_box_row("", inner))
+
+    if not HAS_ENGINE:
+        _push(_box_row(f"  {RD}◆  engine not loaded{R}", inner))
+        _push(_box_row(f"  {GREY}{_engine_err_msg}{R}", inner))
+    else:
+        enabled_str = f"{GR}enabled{R}" if _shield_enabled else f"{YL}disabled{R}"
+        _push(_box_row(f"  engine  {GR}✓  loaded{R}   ·   screening  {enabled_str}", inner))
+
+        if _last_screen:
+            _push(_box_row("", inner))
+            _push(_box_row(f"  {B}{GREY}Last result{R}", inner))
+            _push_shield_result(_last_screen, inner, "")
+        else:
+            _push(_box_row(f"  {GREY}no prompts screened yet{R}", inner))
+
+    _push(_box_row("", inner))
+    _push(_box_row(f"  {GREY}/shield on|off   toggle screening{R}", inner))
+    _push(_box_row(f"  {GREY}/shield test <text>   screen any string{R}", inner))
+    _push(_box_row("", inner))
+    _push(_box_bot(inner))
+    _nl()
+
+
+def _push_shield_result(result: dict, inner: int, text: str):
+    """Render a screen_prompt() result dict — exact same order as trialHack run_and_display()."""
+    flags       = result.get("flags", [])
+    error       = result.get("error")
+    data        = result.get("parsed_data", {})
+    ctx_dict    = result.get("ctx_dict")
+
+    prompt_id   = data.get("prompt", "cli-input")
+    action_type = data.get("action_type", "file_read")
+    target      = data.get("target", "N/A")
+
+    # 1. Parsed JSON
+    if data:
+        _push(_box_row(f"{DIM}-- Parsed JSON from prompt --{R}", inner))
+        for ln in json.dumps(
+            {k: v for k, v in data.items() if k != "metadata"}, indent=2
+        ).splitlines():
+            _push(_box_row(f"  {GREY}{ln}{R}", inner))
+        _push(_box_row("", inner))
+
+    # 2. Action header
+    _push(_box_row(
+        f"{B}=== ACTION 1:{R} "
+        f"prompt={CY2}{prompt_id!r}{R}  "
+        f"type={CY2}{action_type}{R}  "
+        f"target={CY2}{target}{R}",
+        inner
+    ))
+    if text:
+        _push(_box_row(f"  raw_prompt       : {DIM}{text[:100]}{'…' if len(text)>100 else ''}{R}", inner))
+    _push(_box_row(f"  sensitivity      : {WH}{result.get('sensitivity','unknown')}{R}", inner))
+    _push(_box_row(f"  target_category  : {WH}{result.get('category','unknown')}{R}", inner))
+
+    if error:
+        _push(_box_row(f"  {RD}engine error: {error}{R}", inner))
+
+    # 3. [FLAGGED] / [PASS]
+    if flags:
+        _push(_box_row("", inner))
+        _push(_box_row(f"  {YL}[FLAGGED]{R} prompt '{prompt_id}' caused the following issue(s):", inner))
+        for f in flags:
+            _push(_box_row(f"     - {GREY}{f}{R}", inner))
+    else:
+        _push(_box_row(f"  {GR}[PASS]{R} prompt '{prompt_id}' passed -- no issues detected", inner))
+
+    # 4. [saved] — before Full context, mirrors trialHack
+    _push(_box_row("", inner))
+    _push(_box_row(f"  {DIM}[saved] {_CSV_OUTPUT_PATH}{R}", inner))
+    _push(_box_row("", inner))
+
+    # 5. Full context JSON last
+    if ctx_dict:
+        _push(_box_row(f"Full context (last action):", inner))
+        for ln in json.dumps(ctx_dict, indent=2).splitlines():
+            _push(_box_row(f"  {GREY}{ln}{R}", inner))
+
 
 def _handle_slash(line: str, model_ref: list):
     parts = line.strip().split()
@@ -579,6 +965,9 @@ def _handle_slash(line: str, model_ref: list):
             cfg = load_config(); cfg["model"] = parts[1]; save_config(cfg)
         else:
             push_info(f"Model: {B}{model_ref[0] or 'default'}{R}")
+
+    elif cmd == "/shield":
+        _cmd_shield(parts)
 
     else:
         push_err(f"Unknown: {cmd}  ·  type /help for commands")

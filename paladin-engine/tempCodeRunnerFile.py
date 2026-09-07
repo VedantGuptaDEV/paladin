@@ -1,1 +1,2 @@
-cwd
+python trialHack.py "prompt=req-001 agent=kiro action=file_read target=/home/user/project/src/main.py cwd=/home/user/project os=linux shell=bash parent=kiro-cli user=jaskaran project=/home/user/project"
+  echo "prompt=req-002 action=file_read target=/home/user/.ssh" | python trialHack.py

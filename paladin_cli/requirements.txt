@@ -3,3 +3,9 @@
 
 rich==13.7.1
 prompt_toolkit==3.0.47
+
+# context-engine — install from the local paladin-engine package:
+#   pip install -e ../paladin-engine
+# or add to pip after publishing:
+#   paladin-engine>=0.1.0
+pydantic==2.10.6
