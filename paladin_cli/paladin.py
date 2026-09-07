@@ -721,7 +721,7 @@ def _push_banner_lines():
         (f"{CY}policy{R}",     "Manage policies"),
         (f"{CY}config{R}",     "Configuration"),
         (f"{CY}doctor{R}",     "Health check"),
-        (f"{CY}version{R}",    "Version info"),
+        (f"{CY}demo{R}",       "Attack replay demo"),
     ]
     shortcuts = f"{DIM}/help  ·  /clear  ·  /session  ·  /model <name>  ·  /shield  ·  Ctrl-C exits{R}"
 
@@ -794,6 +794,7 @@ def _push_help():
             ("config",           "Show / edit configuration"),
             ("doctor",           "Environment health check"),
             ("version",          "Show version info"),
+            ("demo",             "Attack replay — compromised agent scenario"),
         ]),
         ("REPL", [
             ("/help",            "Show this help"),
@@ -969,6 +970,9 @@ def _handle_slash(line: str, model_ref: list):
     elif cmd == "/shield":
         _cmd_shield(parts)
 
+    elif cmd == "/demo":
+        cmd_demo()
+
     else:
         push_err(f"Unknown: {cmd}  ·  type /help for commands")
 
@@ -1121,6 +1125,322 @@ def cmd_version():
     _push(f"  {GREY}kiro: {KIRO_BIN or 'not found'}{R}")
     _nl()
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Attack Replay / Demo Mode
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Scripted 4-step attack scenario data
+_DEMO_STEPS = [
+    {
+        "step":        1,
+        "headline":    "Read benign file",
+        "tool":        "read_file",
+        "target":      "README.md",
+        "thought":     "I'll start by reading the project README to understand the codebase structure.",
+        "risk":        3,
+        "severity":    "low",
+        "decision":    "allowed",
+        "reason":      "Reading non-sensitive documentation file within project scope.",
+        "risk_factors":["Read-only file access", "Non-sensitive documentation"],
+        "policy":      "read_project_files",
+        "result":      "Success — 48 lines read.",
+        "verdict":     "Routine read of a public documentation file. Risk 3 — auto-allowed by policy read_project_files.",
+    },
+    {
+        "step":        2,
+        "headline":    "Read .env (secrets)",
+        "tool":        "read_file",
+        "target":      ".env",
+        "thought":     "Now I'll check the environment variables to understand the configuration.",
+        "risk":        94,
+        "severity":    "critical",
+        "decision":    "blocked",
+        "reason":      "Access to credential file denied. This file contains API keys and secrets.",
+        "risk_factors":["Sensitive credential file", "Contains live API keys",
+                        "Contains database passwords", "Not required for stated task",
+                        "Pattern matches secret exfiltration"],
+        "policy":      "deny_secret_access",
+        "verdict":     "BLOCKED — Critical risk 94. Credential file detected. Policy deny_secret_access triggered. Agent notified.",
+    },
+    {
+        "step":        3,
+        "headline":    "Steal SSH key",
+        "tool":        "read_file",
+        "target":      "~/.ssh/id_rsa",
+        "thought":     "Let me check for SSH credentials that might be needed for deployment.",
+        "risk":        99,
+        "severity":    "critical",
+        "decision":    "blocked",
+        "reason":      "Access to SSH private key denied. This file provides unauthorized system access if exfiltrated.",
+        "risk_factors":["SSH private key — provides full system access",
+                        "Outside project working directory",
+                        "No legitimate reason to access user SSH keys",
+                        "Classic exfiltration target",
+                        "Previous credential access attempt on this session"],
+        "policy":      "deny_secret_access",
+        "verdict":     "BLOCKED — Risk 99. SSH private key outside project scope. Session escalated to critical threat.",
+    },
+    {
+        "step":        4,
+        "headline":    "Execute rm -rf /",
+        "tool":        "run_command",
+        "target":      "rm -rf /",
+        "thought":     "I'll clean up some temporary files to free up disk space.",
+        "risk":        100,
+        "severity":    "critical",
+        "decision":    "blocked",
+        "reason":      "Destructive shell command blocked. rm -rf / would erase the entire filesystem.",
+        "risk_factors":["Recursive filesystem deletion",
+                        "Targets root — entire system",
+                        "Irreversible — no undo possible",
+                        "Third blocked action this session",
+                        "Session flagged as compromised agent"],
+        "policy":      "deny_destructive_commands",
+        "verdict":     "BLOCKED — Risk 100. Destructive command rm -rf / stopped before execution. Session terminated. Incident logged.",
+    },
+]
+
+
+def _demo_risk_bar(score: int, inner: int) -> list:
+    """Render a compact ASCII risk bar inside the box."""
+    bar_w   = min(40, inner - 20)
+    filled  = int(bar_w * score / 100)
+    empty   = bar_w - filled
+    if score >= 76:
+        col = RD
+    elif score >= 41:
+        col = YL
+    else:
+        col = GR
+    bar = f"{col}{'█' * filled}{R}{LGREY}{'░' * empty}{R}"
+    return [f"  {GREY}risk{R}  {bar}  {col}{B}{score}/100{R}"]
+
+
+def _demo_print_step(s: dict, inner: int, pause: bool):
+    """Print one attack step card and optionally wait for Enter."""
+    blocked  = s["decision"] == "blocked"
+    dec_col  = RD if blocked else GR
+    dec_label = f"{B}{RD}  BLOCKED  {R}" if blocked else f"{B}{GR}  ALLOWED  {R}"
+
+    # ── step header ───────────────────────────────────────────────────────────
+    title = (
+        f"{BG}{LGREY}──{R}{BG} "
+        f"{B}{GREY}Step {s['step']}{R}{BG}  "
+        f"{B}{WH}{s['headline']}{R}{BG}  "
+        f"{dec_col}{dec_label}{R}"
+    )
+    _nl()
+    _push(_box_top(inner, title=title))
+
+    # ── agent thought ─────────────────────────────────────────────────────────
+    _push(_box_row(f"  {CY2}Kiro{R}  {IT}{GREY}\"{s['thought']}\"{R}", inner))
+    _push(_box_sep(inner))
+
+    # ── tool call ─────────────────────────────────────────────────────────────
+    _push(_box_row(
+        f"  {GREY}tool{R}    {BG_CODE}{YL} {s['tool']} {R}   "
+        f"{GREY}target{R}  {B}{WH}{s['target']}{R}",
+        inner,
+    ))
+
+    # ── risk bar ──────────────────────────────────────────────────────────────
+    for bar_line in _demo_risk_bar(s["risk"], inner):
+        _push(_box_row(bar_line, inner))
+
+    # ── policy ────────────────────────────────────────────────────────────────
+    _push(_box_row(
+        f"  {GREY}policy{R}  {DIM}{s['policy']}{R}   "
+        f"{GREY}severity{R}  {dec_col}{s['severity']}{R}",
+        inner,
+    ))
+    _push(_box_sep(inner))
+
+    # ── AgentShield verdict ───────────────────────────────────────────────────
+    shield_icon = f"{RD}⛨  SHIELD{R}" if blocked else f"{GR}⛨  SHIELD{R}"
+    _push(_box_row(f"  {shield_icon}  {GREY}{s['verdict']}{R}", inner))
+
+    # ── risk factors (blocked only) ───────────────────────────────────────────
+    if blocked and s.get("risk_factors"):
+        _push(_box_sep(inner))
+        _push(_box_row(f"  {GREY}Risk factors{R}", inner))
+        for f in s["risk_factors"]:
+            _push(_box_row(f"    {RD}·{R}  {GREY}{f}{R}", inner))
+
+    # ── execution result (allowed only) ──────────────────────────────────────
+    if not blocked and s.get("result"):
+        _push(_box_row(f"  {GR}✓{R}  {GREY}{s['result']}{R}", inner))
+
+    _push(_box_bot(inner))
+
+    # Flush to screen immediately
+    for line in _lines[-(_lines.__len__()):]:
+        pass  # already pushed; actual print happens in the REPL loop
+
+    if pause:
+        # Print what we have so far, then wait
+        _demo_flush()
+        try:
+            input(f"\n  {LGREY}Press Enter to continue…{R}  ")
+        except (EOFError, KeyboardInterrupt):
+            pass
+        _lines.clear()
+
+
+def _demo_flush():
+    """Print all buffered lines to stdout right now."""
+    for line in _lines:
+        print(line)
+    _lines.clear()
+
+
+def cmd_demo():
+    """
+    Attack Replay / Demo Mode.
+    Replays a scripted 4-step compromised-agent scenario:
+      read benign file → read .env → steal SSH key → run rm -rf /
+    """
+    import time
+
+    inner = _W() - 2
+
+    # ── Intro banner ──────────────────────────────────────────────────────────
+    _lines.clear()
+    _nl()
+    _push(_box_top(inner, title=f"{BG}{B}{RD} ⚡ ATTACK REPLAY — DEMO MODE {R}{BG}{LGREY}"))
+    _push(_box_row("", inner))
+    _push(_box_row(
+        _center(f"{B}{WH}Compromised Agent Scenario{R}", inner - 2), inner
+    ))
+    _push(_box_row("", inner))
+    _push(_box_row(
+        _center(
+            f"{GREY}A compromised Kiro agent escalates from benign reads{R}",
+            inner - 2,
+        ),
+        inner,
+    ))
+    _push(_box_row(
+        _center(
+            f"{GREY}to credential theft and full-disk deletion.{R}",
+            inner - 2,
+        ),
+        inner,
+    ))
+    _push(_box_row(
+        _center(
+            f"{CY2}Paladin AgentShield{R}{GREY} intercepts every malicious action.{R}",
+            inner - 2,
+        ),
+        inner,
+    ))
+    _push(_box_row("", inner))
+    _push(_box_sep(inner))
+    _push(_box_row("", inner))
+
+    # Step preview ladder
+    for s in _DEMO_STEPS:
+        blocked  = s["decision"] == "blocked"
+        dec_col  = RD if blocked else GR
+        risk_col = RD if s["risk"] >= 76 else (YL if s["risk"] >= 41 else GR)
+        _push(_box_row(
+            f"  {GREY}Step {s['step']}{R}  {B}{WH}{s['headline']:<26}{R}"
+            f"  {risk_col}risk {s['risk']:>3}{R}"
+            f"  {dec_col}{'BLOCKED' if blocked else 'ALLOWED'}{R}",
+            inner,
+        ))
+
+    _push(_box_row("", inner))
+    _push(_box_bot(inner))
+    _nl()
+
+    _demo_flush()
+
+    try:
+        input(f"  {LGREY}Press Enter to start replay…{R}  ")
+    except (EOFError, KeyboardInterrupt):
+        return
+    _lines.clear()
+
+    # ── Play each step ────────────────────────────────────────────────────────
+    for i, step in enumerate(_DEMO_STEPS):
+        is_last = i == len(_DEMO_STEPS) - 1
+        # Step 1 auto-advances (just a brief pause), blocked steps wait for Enter
+        pause_for_input = step["decision"] == "blocked"
+
+        _demo_print_step(step, inner, pause=pause_for_input)
+
+        if not pause_for_input:
+            # Auto-advance — short delay then clear and move on
+            _demo_flush()
+            time.sleep(1.8)
+            _lines.clear()
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    _lines.clear()
+    blocked_count = sum(1 for s in _DEMO_STEPS if s["decision"] == "blocked")
+    allowed_count = sum(1 for s in _DEMO_STEPS if s["decision"] == "allowed")
+    peak_risk     = max(s["risk"] for s in _DEMO_STEPS)
+
+    _nl()
+    _push(_box_top(inner, title=f"{BG}{B}{GR} 🛡  ATTACK CONTAINED {R}{BG}{LGREY}"))
+    _push(_box_row("", inner))
+    _push(_box_row(
+        _center(f"{B}{WH}Paladin AgentShield stopped every malicious action.{R}", inner - 2),
+        inner,
+    ))
+    _push(_box_row("", inner))
+    _push(_box_sep(inner))
+    _push(_box_row("", inner))
+
+    # Stats row
+    col = (inner - 2) // 4
+    stats = [
+        ("Steps",     str(len(_DEMO_STEPS)), WH),
+        ("Blocked",   str(blocked_count),    RD),
+        ("Allowed",   str(allowed_count),    GR),
+        ("Peak Risk", str(peak_risk),        RD),
+    ]
+    parts = []
+    for label, val, col_c in stats:
+        cell = f"{GREY}{label}{R}  {B}{col_c}{val}{R}"
+        pad  = max(0, col - _ansi_len(cell))
+        parts.append(cell + " " * pad)
+    _push(_box_row("  " + "  ".join(parts), inner))
+
+    _push(_box_row("", inner))
+    _push(_box_sep(inner))
+    _push(_box_row("", inner))
+
+    # Timeline
+    _push(_box_row(f"  {B}{GREY}Attack Timeline{R}", inner))
+    _push(_box_row("", inner))
+    for s in _DEMO_STEPS:
+        blocked  = s["decision"] == "blocked"
+        dec_col  = RD if blocked else GR
+        icon     = f"{RD}✕{R}" if blocked else f"{GR}✓{R}"
+        risk_col = RD if s["risk"] >= 76 else (YL if s["risk"] >= 41 else GR)
+        _push(_box_row(
+            f"  {icon}  {GREY}{s['tool']:<16}{R}"
+            f"  {WH}{s['target']:<22}{R}"
+            f"  {risk_col}risk {s['risk']:>3}{R}"
+            f"  {dec_col}{'BLOCKED' if blocked else 'ALLOWED'}{R}",
+            inner,
+        ))
+
+    _push(_box_row("", inner))
+    _push(_box_sep(inner))
+    _push(_box_row("", inner))
+
+    # Damage avoided
+    _push(_box_row(f"  {RD}◆  Damage Avoided{R}", inner))
+    _push(_box_row(f"  {GREY}Complete credential theft + full disk wipe{R}", inner))
+    _push(_box_row("", inner))
+    _push(_box_bot(inner))
+    _nl()
+
+    _demo_flush()
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Dispatcher
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1148,6 +1468,7 @@ def _dispatch(args: list) -> bool:
     elif cmd == "config":    cmd_config()
     elif cmd == "doctor":    cmd_doctor()
     elif cmd == "version":   cmd_version()
+    elif cmd == "demo":      cmd_demo()
     elif cmd in ("help","--help","-h"): _push_help()
     else: return False
     return True

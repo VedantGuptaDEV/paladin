@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { getDashboardStats, getRiskHistory, getSession } from "../../services/sessions";
 import { getActions } from "../../services/actions";
 import { Card, CardHeader, DecisionBadge, MetricCard, PageHeader, RiskScore, Timestamp, ToolChip } from "../../components/ui";
+import AttackReplayModal from "../../components/AttackReplayModal";
 import type { ToolAction, Session } from "../../types";
 
 const mono = "'JetBrains Mono', monospace";
@@ -18,6 +19,7 @@ export default function Dashboard() {
   const [actions, setActions] = useState<ToolAction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [replayOpen, setReplayOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,19 +45,39 @@ export default function Dashboard() {
 
   return (
     <div style={{ padding: "28px 28px 48px" }}>
+      {replayOpen && <AttackReplayModal onClose={() => setReplayOpen(false)} />}
       <PageHeader
         title="Paladin"
         subtitle="Runtime security for autonomous AI agents."
         right={
-          <div style={{
-            display: "flex", alignItems: "center", gap: 7,
-            background: "var(--bg-2)", border: "1px solid var(--border)",
-            borderRadius: 5, padding: "6px 11px",
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)", opacity: 0.8, display: "inline-block" }} />
-            <span style={{ fontFamily: mono, fontSize: 10, fontWeight: 500, color: "var(--text-1)", letterSpacing: "0.06em" }}>
-              PROTECTION ACTIVE
-            </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Attack Demo button */}
+            <button
+              onClick={() => setReplayOpen(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: "var(--red-dim)", border: "1px solid var(--red-border)",
+                borderRadius: 5, padding: "6px 12px", cursor: "pointer",
+                fontFamily: mono, fontSize: 10, fontWeight: 600,
+                color: "var(--red)", letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-3)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "var(--red-dim)"; }}
+            >
+              ▶ Attack Demo
+            </button>
+            {/* Protection active badge */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 7,
+              background: "var(--bg-2)", border: "1px solid var(--border)",
+              borderRadius: 5, padding: "6px 11px",
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)", opacity: 0.8, display: "inline-block" }} />
+              <span style={{ fontFamily: mono, fontSize: 10, fontWeight: 500, color: "var(--text-1)", letterSpacing: "0.06em" }}>
+                PROTECTION ACTIVE
+              </span>
+            </div>
           </div>
         }
       />
