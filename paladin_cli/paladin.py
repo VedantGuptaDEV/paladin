@@ -450,6 +450,7 @@ def _push_banner_lines():
         (f"{CY}deny{R}",       "Deny action"),
         (f"{CY}activity{R}",   "Activity log"),
         (f"{CY}policy{R}",     "Manage policies"),
+        (f"{CY}check{R}",      "Context check (trialHack)"),
         (f"{CY}config{R}",     "Configuration"),
         (f"{CY}doctor{R}",     "Health check"),
         (f"{CY}version{R}",    "Version info"),
@@ -525,6 +526,7 @@ def _push_help():
             ("config",           "Show / edit configuration"),
             ("doctor",           "Environment health check"),
             ("version",          "Show version info"),
+            ("check [prompt]",   "Run Context Engine on a prompt (trialHack)"),
         ]),
         ("REPL", [
             ("/help",            "Show this help"),
@@ -732,6 +734,107 @@ def cmd_version():
     _push(f"  {GREY}kiro: {KIRO_BIN or 'not found'}{R}")
     _nl()
 
+def cmd_check(prompt_str: str = None):
+    """Run the trialHack Context Engine on a prompt string — same output as trialHack.py."""
+    if not prompt_str:
+        prompt_str = _ask(
+            "Prompt to check (e.g. prompt=req-001 agent=kiro action=file_read target=/etc/passwd)"
+        )
+    if not prompt_str:
+        push_err("No prompt provided.  Usage: check <prompt string>")
+        return
+
+    tw    = _W()
+    inner = tw - 2
+
+    # ── Load the integration module ───────────────────────────────────────────
+    try:
+        import importlib.util as _ilu, os as _os
+        _th_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "trialhack.py")
+        _spec = _ilu.spec_from_file_location("trialhack", _th_path)
+        _mod  = _ilu.module_from_spec(_spec)
+        sys.modules["trialhack"] = _mod   # register BEFORE exec so @dataclass resolves
+        _spec.loader.exec_module(_mod)
+        run_check    = _mod.run_check
+        parse_prompt = _mod.parse_prompt
+        _CSV_PATH    = _mod._CSV_PATH
+    except Exception as e:
+        push_err(f"Could not load trialhack module: {e}")
+        return
+
+    # ── Section 1: Parsed JSON ────────────────────────────────────────────────
+    parsed = parse_prompt(prompt_str)
+    parsed_json = json.dumps(
+        {k: v for k, v in parsed.items() if k != "metadata" or v},
+        indent=2
+    )
+
+    _nl()
+    _push(_box_top(inner, title=f"{BG}{CYB} ⬡ context check {R}{BG}{LGREY}"))
+    _push(_box_row("", inner))
+    _push(_box_row(f"{DIM}-- Parsed JSON from prompt --{R}", inner))
+    for line in parsed_json.splitlines():
+        _push(_box_row(f"{GREY}{line}{R}", inner))
+    _push(_box_row("", inner))
+
+    # ── Run the engine ────────────────────────────────────────────────────────
+    result = run_check(prompt_str)
+
+    # ── Section 2: ACTION header — same as trialHack ─────────────────────────
+    action_hdr = (
+        f"=== ACTION 1: prompt={result.prompt_id!r}  "
+        f"type={result.action_type}  target={result.target} ==="
+    )
+    _push(_box_sep(inner))
+    _push(_box_row(f"{CYB}{action_hdr}{R}", inner))
+    _push(_box_sep(inner))
+
+    # ── Error case ────────────────────────────────────────────────────────────
+    if result.error:
+        _push(_box_row(f"{RD}✗  Engine error: {result.error}{R}", inner))
+        _push(_box_bot(inner)); _nl()
+        return
+
+    # ── Section 3: Fields (same labels as trialHack) ─────────────────────────
+    sens_colour = {"normal": GR, "sensitive": YL, "critical": RD}.get(
+        result.sensitivity.lower(), GREY
+    )
+    _push(_box_row(
+        f"  {GREY}raw_prompt       :{R}  {WH}{result.raw_prompt}{R}", inner))
+    _push(_box_row(
+        f"  {GREY}sensitivity      :{R}  {sens_colour}{B}{result.sensitivity}{R}", inner))
+    _push(_box_row(
+        f"  {GREY}target_category  :{R}  {CY2}{result.target_category}{R}", inner))
+
+    # ── Section 4: PASS / FLAGGED (same text as trialHack) ───────────────────
+    _push(_box_row("", inner))
+    if result.is_flagged:
+        _push(_box_row(
+            f"  {RD}{B}[FLAGGED]{R}  {WH}prompt {result.prompt_id!r} caused the following issue(s):{R}",
+            inner))
+        for reason in result.flags:
+            for chunk in _wrap_text(f"     - {reason}", inner - 4):
+                _push(_box_row(f"  {YL}{chunk}{R}", inner))
+    else:
+        _push(_box_row(
+            f"  {GR}[PASS]{R}  {GREY}prompt {result.prompt_id!r} passed -- no issues detected{R}",
+            inner))
+
+    # ── Section 5: CSV save confirmation ─────────────────────────────────────
+    _push(_box_row(
+        f"  {GR}[saved]{R}  {DIM}{_CSV_PATH}{R}", inner))
+
+    # ── Section 6: Full context JSON dump ────────────────────────────────────
+    _push(_box_row("", inner))
+    _push(_box_sep(inner))
+    _push(_box_row(f"{DIM}Full context (last action):{R}", inner))
+    for line in json.dumps(result.ctx_dict, indent=2).splitlines():
+        _push(_box_row(f"{GREY}{line}{R}", inner))
+
+    _push(_box_row("", inner))
+    _push(_box_bot(inner))
+    _nl()
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Dispatcher
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -759,6 +862,7 @@ def _dispatch(args: list) -> bool:
     elif cmd == "config":    cmd_config()
     elif cmd == "doctor":    cmd_doctor()
     elif cmd == "version":   cmd_version()
+    elif cmd == "check":     cmd_check(" ".join(rest) if rest else None)
     elif cmd in ("help","--help","-h"): _push_help()
     else: return False
     return True
