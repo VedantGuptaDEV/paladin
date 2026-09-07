@@ -134,13 +134,27 @@ _LOG_CSV = (Path(__file__).resolve().parent.parent
 _LOG_FIELDNAMES = [
     "timestamp", "raw_prompt", "action_type",
     "target", "agent", "sensitivity", "target_category", "cwd",
+    "risk_score",
 ]
 
 def _log_to_csv(raw_prompt: str, action_type: str = "chat",
                 target: str = "", agent: str = "paladin_cli",
                 sensitivity: str = "normal", target_category: str = "",
-                cwd: str = "") -> None:
+                cwd: str = "", risk_score: str = "") -> None:
     """Append one row to the persistent prompt log (trialHack_output.csv)."""
+    # Compute risk score via Risk Engine if not supplied
+    if not risk_score:
+        try:
+            import sys as _sys, os as _os
+            _engine_dir  = str(Path(__file__).resolve().parent.parent / "Engine")
+            _risk_dir    = str(Path(__file__).resolve().parent.parent / "Engine" / "Risk_Engine")
+            for _p in (_engine_dir, _risk_dir):
+                if _p not in _sys.path:
+                    _sys.path.insert(0, _p)
+            import Risk_Engine.RiskEngine as _re
+            _, risk_score = _re.risk_score(raw_prompt)
+        except Exception:
+            risk_score = ""
     row = {
         "timestamp":       datetime.now().isoformat(timespec="seconds"),
         "raw_prompt":      raw_prompt,
@@ -150,6 +164,7 @@ def _log_to_csv(raw_prompt: str, action_type: str = "chat",
         "sensitivity":     sensitivity,
         "target_category": target_category,
         "cwd":             cwd or str(Path.cwd()),
+        "risk_score":      risk_score,
     }
     file_exists = _LOG_CSV.is_file()
     try:
@@ -171,13 +186,26 @@ _LOG_CSV = (Path(__file__).resolve().parent.parent
 _LOG_FIELDNAMES = [
     "timestamp", "raw_prompt", "action_type",
     "target", "agent", "sensitivity", "target_category", "cwd",
+    "risk_score",
 ]
 
 def _log_to_csv(raw_prompt: str, action_type: str = "chat",
                 target: str = "", agent: str = "paladin_cli",
                 sensitivity: str = "normal", target_category: str = "",
-                cwd: str = "") -> None:
+                cwd: str = "", risk_score: str = "") -> None:
     """Append one row to the persistent prompt log CSV."""
+    if not risk_score:
+        try:
+            import sys as _sys
+            _engine_dir = str(Path(__file__).resolve().parent.parent / "Engine")
+            _risk_dir   = str(Path(__file__).resolve().parent.parent / "Engine" / "Risk_Engine")
+            for _p in (_engine_dir, _risk_dir):
+                if _p not in _sys.path:
+                    _sys.path.insert(0, _p)
+            import Risk_Engine.RiskEngine as _re
+            _, risk_score = _re.risk_score(raw_prompt)
+        except Exception:
+            risk_score = ""
     row = {
         "timestamp":       datetime.now().isoformat(timespec="seconds"),
         "raw_prompt":      raw_prompt,
@@ -187,6 +215,7 @@ def _log_to_csv(raw_prompt: str, action_type: str = "chat",
         "sensitivity":     sensitivity,
         "target_category": target_category,
         "cwd":             cwd or str(Path.cwd()),
+        "risk_score":      risk_score,
     }
     file_exists = _LOG_CSV.is_file()
     try:
@@ -673,27 +702,45 @@ def ask_and_render(prompt: str, label: str = "response", model: str = None):
     # ─────────────────────────────────────────────────────────────────────────
 
     _push_agent_header(label)
-    cmd = [KIRO_BIN, "chat", "--no-interactive", prompt]
-    if model: cmd += ["--model", model]
-
     start = datetime.now().timestamp()
-    got   = False
 
+    # ── kiro_guard: intercepts every tool-use command before execution ────────
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True, bufsize=1)
-        for raw in proc.stdout:
-            got = True
-            for styled in _render_line(raw):
-                _push(styled)
-        proc.wait()
-    except KeyboardInterrupt:
-        _push(f"  {DIM}interrupted{R}"); return
-    except Exception as e:
-        push_err(str(e)); return
+        import importlib.util as _ilu
+        _guard_path = str(Path(__file__).resolve().parent.parent / "Engine" / "kiro_guard.py")
+        _spec   = _ilu.spec_from_file_location("kiro_guard", _guard_path)
+        _kguard = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_kguard)
 
-    if not got:
-        push_warn("No response."); return
+        _kguard.run_guarded(
+            prompt,
+            push_fn=_push,
+            render_line_fn=_render_line,
+            model=model,
+        )
+    except Exception as _kg_err:
+        # kiro_guard unavailable — fall back to direct kiro call (no protection)
+        push_warn(f"kiro_guard unavailable ({_kg_err}) — running unguarded")
+        if not KIRO_BIN:
+            push_err("kiro CLI not found. Install from https://kiro.ai"); return
+        cmd = [KIRO_BIN, "chat", "--no-interactive", prompt]
+        if model: cmd += ["--model", model]
+        got = False
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, bufsize=1)
+            for raw in proc.stdout:
+                got = True
+                for styled in _render_line(raw):
+                    _push(styled)
+            proc.wait()
+        except KeyboardInterrupt:
+            _push(f"  {DIM}interrupted{R}"); return
+        except Exception as e:
+            push_err(str(e)); return
+        if not got:
+            push_warn("No response."); return
+    # ─────────────────────────────────────────────────────────────────────────
 
     _push_agent_footer(datetime.now().timestamp() - start)
 

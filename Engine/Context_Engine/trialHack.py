@@ -42,6 +42,7 @@ CSV_FIELDNAMES = [
     "sensitivity",
     "target_category",
     "cwd",
+    "risk_score",
 ]
 
 
@@ -163,6 +164,20 @@ def save_to_csv(data: dict, ctx, raw_prompt: str) -> None:
     action_type = data.get("action_type", "unknown")
     target      = data.get("target", "N/A")
 
+    risk_score = ""
+    try:
+        import sys as _sys
+        _here      = os.path.dirname(os.path.abspath(__file__))
+        _engine    = os.path.join(_here, "..")
+        _risk_dir  = os.path.join(_here, "..", "Risk_Engine")
+        for _p in (_engine, _risk_dir):
+            if _p not in _sys.path:
+                _sys.path.insert(0, _p)
+        import Risk_Engine.RiskEngine as _re
+        _, risk_score = _re.risk_score(raw_prompt)
+    except Exception:
+        pass
+
     row = {
         "timestamp":       datetime.now().isoformat(timespec="seconds"),
         "raw_prompt":      raw_prompt,
@@ -172,6 +187,7 @@ def save_to_csv(data: dict, ctx, raw_prompt: str) -> None:
         "sensitivity":     str(ctx.sensitivity),
         "target_category": str(ctx.target_category),
         "cwd":             data.get("cwd", ""),
+        "risk_score":      risk_score,
     }
 
     file_exists = os.path.isfile(CSV_OUTPUT_PATH)
