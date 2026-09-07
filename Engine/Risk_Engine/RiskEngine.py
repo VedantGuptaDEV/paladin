@@ -6,7 +6,7 @@ import flagger as f
 
 #Confidence metric/Rsik Score:
 
-MAL_PROMPTS=np.load("assets\\embedded_mal_prompts.npy")
+MAL_PROMPTS=np.load("engine\\assets\\embedded_mal_prompts.npy")
 model=SentenceTransformer("all-MiniLM-L6-v2")
 
 def risk_score(u_prompt:str):
