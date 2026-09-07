@@ -1,0 +1,2 @@
+def flag():
+    print("Flagged")

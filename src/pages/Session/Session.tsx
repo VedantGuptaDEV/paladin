@@ -18,6 +18,7 @@ export default function Session() {
   const [sending, setSending]                       = useState(false);
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
   const [mobilePanel, setMobilePanel]               = useState<"chat" | "security">("chat");
+  const [saved, setSaved]                           = useState(false);
 
   const feedRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -66,6 +67,40 @@ export default function Session() {
   const pendingCount = actions.filter((a) => a.decision === "approval_required").length;
   const activeApproval = selectedAction ? pendingApprovals.find((a) => a.action_id === selectedAction.id) : undefined;
 
+  const handleExport = () => {
+    const report = {
+      session_id: session.id,
+      agent: session.agent,
+      user_prompt: session.user_prompt,
+      exported_at: new Date().toISOString(),
+      stats: { allowed: allowedCount, blocked: blockedCount, pending: pendingCount, total: actions.length },
+      actions: actions.map((a) => ({
+        id: a.id,
+        tool: a.tool_name,
+        input: a.tool_input,
+        risk_score: a.risk_score,
+        severity: a.severity,
+        decision: a.decision,
+        reason: a.reason,
+        risk_factors: a.risk_factors,
+        policy: a.policy,
+        timestamp: a.timestamp,
+        execution_result: a.execution_result,
+        agent_feedback: a.agent_feedback,
+      })),
+      messages: messages.map((m) => ({ role: m.role, content: m.content, timestamp: m.timestamp })),
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const url  = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href     = url;
+    link.download = `paladin-session-${session.id}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
   return (
     <>
       {/* Mobile tabs */}
@@ -98,10 +133,28 @@ export default function Session() {
                 &ldquo;{session.user_prompt}&rdquo;
               </div>
             </div>
-            <div style={{ display: "flex", gap: 10, fontFamily: mono, fontSize: 11 }}>
+            <div style={{ display: "flex", gap: 10, fontFamily: mono, fontSize: 11, alignItems: "center" }}>
               <span style={{ color: "var(--green)" }}>{allowedCount} allow</span>
               <span style={{ color: "var(--amber)" }}>{pendingCount} review</span>
               <span style={{ color: "var(--red)"   }}>{blockedCount} block</span>
+              <button
+                onClick={handleExport}
+                title="Export session as JSON"
+                style={{
+                  marginLeft: 6,
+                  padding: "4px 10px",
+                  background: saved ? "var(--green-dim)" : "var(--bg-3)",
+                  border: `1px solid ${saved ? "var(--green-border)" : "var(--border)"}`,
+                  borderRadius: 4,
+                  color: saved ? "var(--green)" : "var(--text-1)",
+                  fontFamily: mono, fontSize: 10,
+                  cursor: "pointer",
+                  letterSpacing: "0.05em",
+                  transition: "color 0.2s, background 0.2s, border-color 0.2s",
+                }}
+              >
+                {saved ? "✓ saved" : "↓ save"}
+              </button>
             </div>
           </div>
 
