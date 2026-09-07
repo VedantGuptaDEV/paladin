@@ -1,11 +1,8 @@
 import { createBrowserRouter, Navigate, Outlet } from "react-router";
 import Sidebar from "../components/Sidebar";
 import Dashboard from "../pages/Dashboard/Dashboard";
-import Session from "../pages/Session/Session";
-import Approvals from "../pages/Approvals/Approvals";
 import Activity from "../pages/Activity/Activity";
 import Policies from "../pages/Policies/Policies";
-import Settings from "../pages/Settings/Settings";
 
 function Root() {
   return (
@@ -34,11 +31,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: "dashboard", Component: Dashboard },
-      { path: "session/:id", Component: Session },
-      { path: "approvals", Component: Approvals },
       { path: "activity", Component: Activity },
       { path: "policies", Component: Policies },
-      { path: "settings", Component: Settings },
     ],
   },
 ]);
