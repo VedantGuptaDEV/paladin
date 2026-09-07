@@ -3,11 +3,13 @@
  *
  * Mock mode: returns data from src/mock/.
  * Real mode: calls FastAPI /sessions endpoints.
+ * CSV mode:  derives stats from trialHack_output.csv (served from /public).
  */
 
 import { USE_MOCK, get, post } from "./api";
+import { fetchCsvRows, rowsToStats, rowsToRiskHistory } from "./csvService";
 import type { Session, AgentMessage } from "../types";
-import { mockSession, mockMessages, dashboardStats, riskHistory } from "../mock";
+import { mockSession, mockMessages } from "../mock";
 
 // ─── Sessions ─────────────────────────────────────────────────────────────────
 
@@ -53,12 +55,12 @@ export async function sendMessage(sessionId: string, content: string): Promise<A
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-export async function getDashboardStats(): Promise<typeof dashboardStats> {
-  if (USE_MOCK) return dashboardStats;
-  return get<typeof dashboardStats>("/dashboard/stats");
+export async function getDashboardStats() {
+  const rows = await fetchCsvRows();
+  return rowsToStats(rows);
 }
 
-export async function getRiskHistory(): Promise<typeof riskHistory> {
-  if (USE_MOCK) return riskHistory;
-  return get<typeof riskHistory>("/dashboard/risk-history");
+export async function getRiskHistory() {
+  const rows = await fetchCsvRows();
+  return rowsToRiskHistory(rows);
 }

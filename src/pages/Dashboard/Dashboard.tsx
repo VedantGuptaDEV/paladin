@@ -20,11 +20,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
+
     async function load() {
       setError(null);
       try {
         const [st, rh, acts] = await Promise.all([
-          getDashboardStats(), getRiskHistory(), getActions("A82F"),
+          getDashboardStats(), getRiskHistory(), getActions(),
         ]);
         if (!cancelled) { setStats(st); setRiskHistory(rh); setActions(acts); }
       } catch (err) {
@@ -33,8 +34,12 @@ export default function Dashboard() {
         if (!cancelled) setLoading(false);
       }
     }
+
     load();
-    return () => { cancelled = true; };
+
+    // Poll every 5 seconds to pick up new CSV rows as Paladin writes them
+    const interval = setInterval(load, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   if (loading) return <Msg>Loading…</Msg>;

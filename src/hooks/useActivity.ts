@@ -35,20 +35,28 @@ export function useActivity(): UseActivityReturn {
     let cancelled = false;
 
     async function load() {
-      setLoading(true);
       setError(null);
       try {
         const data = await getAuditEvents(SESSION_ID);
-        if (!cancelled) setEvents(data);
+        if (!cancelled) {
+          setEvents(data);
+          setLoading(false);
+        }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load events");
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load events");
+          setLoading(false);
+        }
       }
     }
 
+    // Initial load shows spinner; subsequent polls are silent
+    setLoading(true);
     load();
-    return () => { cancelled = true; };
+
+    // Poll every 5 seconds to pick up new CSV rows
+    const interval = setInterval(load, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   const setFilter = useCallback((filter: string) => {
