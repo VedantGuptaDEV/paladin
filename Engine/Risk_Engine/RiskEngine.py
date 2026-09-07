@@ -1,12 +1,14 @@
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import flagger as f
+import os as _os
 
 ###################################################################################################################################################################################################
 
 #Confidence metric/Rsik Score:
 
-MAL_PROMPTS=np.load("engine\\assets\\embedded_mal_prompts.npy")
+_ASSETS_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "assets")
+MAL_PROMPTS=np.load(_os.path.join(_ASSETS_DIR, "embedded_mal_prompts.npy"))
 model=SentenceTransformer("all-MiniLM-L6-v2")
 
 def risk_score(u_prompt:str):
@@ -39,7 +41,7 @@ green2orange=0.7
 
 def tier2(risk_factor:float):
     if risk_factor<null2green:
-        print("pass to kiro-cli")
+        # Safe — caller (Backend.py) will forward prompt to kiro-cli
         return 0
     elif null2green<=risk_factor and risk_factor<=green2orange:
         print("send to LLM")

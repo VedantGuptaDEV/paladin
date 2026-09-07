@@ -1922,6 +1922,26 @@ def _make_app(model_ref: list):
 # Entry
 # ΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü
 
+def _run_backend():
+    """
+    Run engine/Backend.py as a subprocess after a prompt has been logged to
+    trialHack_output.csv.  Backend.py must be executed from the engine/ directory
+    because it uses a relative path to find the CSV and imports Risk_Engine.
+    """
+    engine_dir = str(Path(__file__).resolve().parent.parent / "engine")
+    backend_py = str(Path(engine_dir) / "Backend.py")
+    try:
+        result = subprocess.run(
+            [sys.executable, backend_py],
+            cwd=engine_dir,
+            capture_output=False,   # let stdout/stderr flow straight to the terminal
+        )
+        if result.returncode != 0:
+            print(f"\n{YL}[paladin]{R} Backend.py exited with code {result.returncode}")
+    except Exception as exc:
+        print(f"\n{RD}[paladin]{R} Failed to run Backend.py: {exc}")
+
+
 def main():
     global _app
     _mkdirs()
@@ -1931,61 +1951,60 @@ def main():
     model_ref = [cfg.get("model")]
 
     if args:
-        # Handle command directly
-        _lines.clear()  # Clear any previous content
-        
-        # Log every prompt to CSV (check cmd logs its own via trialhack)
+        # One-shot mode: log the prompt then hand off to Backend.py
+        _lines.clear()
+
         _cmd0 = args[0].lower() if args else ""
         if _cmd0 != "check":
             _log_to_csv(" ".join(args), action_type=_cmd0 or "chat")
-        
-        if not _dispatch(args):
-            # If not a built-in command, treat as a prompt
-            ask_and_render(" ".join(args), model=model_ref[0])
-        
-        # Print the output
-        for line in _lines:
-            print(line)
+
+        # Print any built-in command output (version, help, etc.)
+        if _dispatch(args):
+            for line in _lines:
+                print(line)
+        else:
+            # Not a built-in command — it is a user prompt.
+            # CSV has already been written; run Backend.py now.
+            _run_backend()
     else:
-        # Simple interactive mode
+        # Interactive REPL mode
         _push_banner_lines()
-        # Print the banner
         for line in _lines:
             print(line)
-        
+
         print("\nSimple CLI mode - type commands or prompts directly")
         print("Commands: init, start, status, run, config, version, help")
         print("Type 'exit' or press Ctrl+C to quit")
         print()
-        
+
         try:
             while True:
                 try:
                     user_input = input("Γ¼í Γ¥» ").strip()
                     if not user_input:
                         continue
-                    
+
                     if user_input.lower() in ['exit', 'quit']:
                         break
-                    
-                    # Clear previous output
+
                     _lines.clear()
-                    
+
                     # Log every prompt to CSV (check cmd logs its own via trialhack)
                     _args = user_input.split()
                     _cmd0 = _args[0].lower() if _args else ""
                     if _cmd0 != "check":
                         _log_to_csv(user_input, action_type=_cmd0 or "chat")
-                    
-                    # Handle the input
-                    if not _dispatch(user_input.split()):
-                        ask_and_render(user_input, model=model_ref[0])
-                    
-                    # Print any output
-                    for line in _lines:
-                        print(line)
+
+                    # If it's a built-in command, dispatch it; otherwise run Backend.py
+                    if _dispatch(user_input.split()):
+                        for line in _lines:
+                            print(line)
+                    else:
+                        # User typed a plain prompt — CSV already updated, run Backend.py
+                        _run_backend()
+
                     print()
-                        
+
                 except EOFError:
                     break
                 except KeyboardInterrupt:

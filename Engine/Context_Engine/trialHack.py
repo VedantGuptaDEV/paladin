@@ -30,6 +30,7 @@ from datetime import datetime
 from paladin.context.engine import ContextEngine
 from paladin.context.history import ActionHistory
 from paladin.schemas.action import AgentAction
+import engine
 
 # ── CSV output path ────────────────────────────────────────────────────────────
 CSV_OUTPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trialHack_output.csv")
@@ -183,6 +184,7 @@ def save_to_csv(data: dict, ctx, raw_prompt: str) -> None:
         writer.writerow(row)
 
     print(f"  [saved] {CSV_OUTPUT_PATH}")
+                              ####### command to run backend_preprocessor
 
 
 # ── Step 5: Run engine & display (same format as original) ────────────────────
@@ -239,3 +241,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+engine.Backend()
